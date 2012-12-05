@@ -14,7 +14,7 @@ int main(int argc, char* argv[])
 	struct sockaddr_in server_addr;
 	int ret, server;
 	char *request = "GET_TIME";
-	char msg[1024];
+	char msg[1024], nickname[32];
 	char ip[16];
 	int porta;
 	
@@ -53,4 +53,10 @@ int main(int argc, char* argv[])
 	}
 	//connessione avvenuta, richiesta ed invio di nome e porta
 	printf("Connessione al server %s:%s effettuata con successo\n\n", argv[1], argv[2]);
+	
+	//Inserimento nickname con controllo
+	do {
+		printf("Inserisci il tuo nikname (max 31 caratteri): ");
+		scanf("%s",nickname);
+		if(send())
 }
