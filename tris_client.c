@@ -85,29 +85,31 @@ int main(int argc, char* argv[])
 	
 	//controllo che la porta UDP scelta sia disponibile
 	while(bind(udp, (struct sockaddr*) &opponent_addr, sizeof(struct sockaddr_in)) == -1)
-		switch(errno){
+	{
+		switch(errno)
+		{
 			case EADDRINUSE: //porta già in uso
 				printf("La porta scelta è occupata, sceglierne un'altra: ");
 				scanf("%hu", &UDPport);
 				flush();
 				opponent_addr.sin_port = htons(UDPport);
 				break;
+				
 			case EACCES:
 				printf("Non hai i permessi per quella porta, prova una porta superiore a 1023: ");
 				scanf("%hu", &UDPport);
 				flush();
 				opponent_addr.sin_port = htons(UDPport);
 				break;
+				
 			default:
 				perror("errore non gestito nel bind del socket udp");
 				exit(EXIT_FAILURE);
 		}
-	
-	//controllo che la porta UDP scelta sia disponibile
-	//opponent = bindUDPport(UDPport);
+	}
 	
 	//Invio al server il nickname e la porta UDP di ascolto
-	buffer.type = SENDUSER;
+	buffer.type = SETUSER;
 	buffer.length = strlen(nickname)+3; //lunghezza stringa + \0 + 2 byte porta
 	buffer.payload = (char *) malloc(buffer.length*sizeof(char));
 	*((int16_t *) buffer.payload) = htons(UDPport);
@@ -117,10 +119,25 @@ int main(int argc, char* argv[])
 	//Ricevo la conferma dal server
 	server_msg = recvPacket(server,"Errore ricezione controllo nickname");
 
-	if(server_msg.payload[0] != OK)
-		//choiceNewNickname();
+	//Controllo che il nickname scelto sia libero
+	while(server_msg.payload[0] != true)
+	{
+		printf("Il nome \"%s\" non è disponibile, scegline un'altro (max 32 caratteri): ",nickname);
+		memset(nickname,' ',33);
+		scanf("%s", nickname);
+		flush();
+		buffer.length = strlen(nickname)+3; //lunghezza stringa + \0 + 2 byte porta
+		free(buffer.payload);
+		buffer.payload = (char *) malloc(buffer.length*sizeof(char));
+		*((int16_t *) buffer.payload) = htons(UDPport);
+		strcpy(&buffer.payload[2],nickname);
+		sendPacket(server,&buffer,"Errore invio nickname e porta UDP");
+		
+		//Ricevo la conferma dal server
+		server_msg = recvPacket(server,"Errore ricezione controllo nickname");
+	}
 	
-	/* */
+	/*Da questo punto in poi il client è pronto a giocare*/
 	
 	for(;;)
 	{
@@ -128,7 +145,10 @@ int main(int argc, char* argv[])
 			printf("> ");
 		else
 			printf("# ");
+			
+		
 	}
+	return 0;
 }
 
 //Stampa l'elenco dei comandi disponibili
