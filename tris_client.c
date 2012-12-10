@@ -1,22 +1,26 @@
-#include <time.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#define SA struct sockaddr
+#include "tris_lib.h"
+
+//Dichiarazioni delle funzioni definite dopo il main()
+void printHelp(int match);
 
 int main(int argc, char* argv[])
 {
 	//dichiarazioni delle variabili
-	struct sockaddr_in server_addr;
-	int ret, server;
-	char *request = "GET_TIME";
-	char msg[1024], nickname[32];
-	char ip[16];
-	int porta;
+	struct sockaddr_in server_addr, opponent_addr;
+	packet buffer, server_msg;
+	int server, udp, fdmax, ready_des;
+	int16_t UDPport;
+	char *nickname, ip[16], status=IDLE;
+	
+	//lista dei descrittori da controllare con la select()
+	fd_set masterset, readset;
+	
+	//descrittore dello STDIN
+	const int des_stdin = fileno(stdin);
+	
+	//inizializzazione degli fd_set
+	FD_ZERO(&masterset);
+	FD_ZERO(&readset);
 	
 	//controllo numero argomenti passati
 	if(argc != 3){
@@ -24,10 +28,8 @@ int main(int argc, char* argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	printf("TRIS CLIENT\n\n");
-
-	//Creazione del socket TCP
-	if((server = socket(PF_INET, SOCK_STREAM, 0)) == -1){
+	//creazione del socket TCP
+	if(server = socket(PF_INET, SOCK_STREAM, 0) == -1){
 		perror("Errore nella creazione del socket TCP");
 		exit(EXIT_FAILURE);
 	}
@@ -46,17 +48,102 @@ int main(int argc, char* argv[])
 	server_addr.sin_port = htons(atoi(argv[2]));
 	inet_pton(AF_INET, ip, &server_addr.sin_addr.s_addr);
 	
-	//Connessione al server
-	if(connect(server, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_in)) == -1){
+	//connessione al server
+	if(connect(server, (SA *) &server_addr, sizeof(SA)) == -1){
 		perror("errore nella connessione al server");
 		exit(EXIT_FAILURE);
 	}
-	//connessione avvenuta, richiesta ed invio di nome e porta
-	printf("Connessione al server %s:%s effettuata con successo\n\n", argv[1], argv[2]);
 	
-	//Inserimento nickname con controllo
-	do {
-		printf("Inserisci il tuo nikname (max 31 caratteri): ");
-		scanf("%s",nickname);
-		if(send())
+	//connessione avvenuta, richiesta ed invio di nome e porta
+	printf("\nConnessione al server %s:%s effettuata con successo\n\n", argv[1], argv[2]);
+	
+	//stampo i comandi disponibili
+	printHelp(IDLE);
+	
+	//Inserimento nickname
+	printf("Inserisci il tuo nickname (max 32 caratteri): ");
+	nickname = (char *) malloc(33*sizeof(char));
+	scanf("%s",nickname);
+	flush();
+	
+	//inserimento della porta UDP di ascolto
+	printf("Inserisci la porta UDP di ascolto: ");
+	scanf("%hu",&UDPport);
+	flush();
+	
+	//creazione del socket UDP
+	if(udp = socket(AF_INET, SOCK_DGRAM, 0) == -1){
+		perror("Errore nella creazione del socket UDP");
+		exit(EXIT_FAILURE);
+	}
+	
+	//inizializzazione della struttura dati
+	memset(&opponent_addr, 0, sizeof(struct sockaddr_in));
+	opponent_addr.sin_family = AF_INET;
+	opponent_addr.sin_port = htons(UDPport);
+	opponent_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	//controllo che la porta UDP scelta sia disponibile
+	while(bind(udp, (struct sockaddr*) &opponent_addr, sizeof(struct sockaddr_in)) == -1)
+		switch(errno){
+			case EADDRINUSE: //porta già in uso
+				printf("La porta scelta è occupata, sceglierne un'altra: ");
+				scanf("%hu", &UDPport);
+				flush();
+				opponent_addr.sin_port = htons(UDPport);
+				break;
+			case EACCES:
+				printf("Non hai i permessi per quella porta, prova una porta superiore a 1023: ");
+				scanf("%hu", &UDPport);
+				flush();
+				opponent_addr.sin_port = htons(UDPport);
+				break;
+			default:
+				perror("errore non gestito nel bind del socket udp");
+				exit(EXIT_FAILURE);
+		}
+	
+	//controllo che la porta UDP scelta sia disponibile
+	//opponent = bindUDPport(UDPport);
+	
+	//Invio al server il nickname e la porta UDP di ascolto
+	buffer.type = SENDUSER;
+	buffer.length = strlen(nickname)+3; //lunghezza stringa + \0 + 2 byte porta
+	buffer.payload = (char *) malloc(buffer.length*sizeof(char));
+	*((int16_t *) buffer.payload) = htons(UDPport);
+	strcpy(&buffer.payload[2],nickname);
+	sendPacket(server,&buffer,"Errore invio nickname e porta UDP");
+	
+	//Ricevo la conferma dal server
+	server_msg = recvPacket(server,"Errore ricezione controllo nickname");
+
+	if(server_msg.payload[0] != OK)
+		//choiceNewNickname();
+	
+	/* */
+	
+	for(;;)
+	{
+		if(status == IDLE)
+			printf("> ");
+		else
+			printf("# ");
+	}
 }
+
+//Stampa l'elenco dei comandi disponibili
+void printHelp(int status)
+{
+	printf("\nSono disponibili i seguenti comandi:\n");
+	printf(" * !help --> mostra l'elenco dei comandi disponibili\n");
+	if(status == IDLE)
+		printf(" * !who --> mostra l'elenco dei client connessi al server\n");
+	printf(" * !connect nome_client --> avvia una partita con l'utente nome_client\n");
+	printf(" * !disconnect --> disconnette il client dall'attuale partita\n");
+	printf(" * !quit --> disconnette il client dal server\n");
+	printf(" * !show_map --> mostra la mappa del gioco\n");
+	printf(" * !hit num_cell --> marca la casella num_cell (valido quando e' il proprio turno)\n\n");
+}
+
+
+	
