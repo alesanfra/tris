@@ -3,9 +3,13 @@
 int main(int argc,char* argv[])
 {
 	//allocazione delle strutture dati necessarie
-	struct sockaddr_in server_addr, my_addr, cl_addr;
-	int len, sk, cn_sk;
-	char ip[16];
+	struct sockaddr_in server_addr;
+	player* clients;
+	packet buffer_in, buffer_out;
+	int server, fdmax, ready_des;
+	
+	//lista dei descrittori da controllare con la select()
+	fd_set masterset, readset;
 	
 	//controllo numero argomenti passati
 	if(argc != 3){
@@ -17,35 +21,38 @@ int main(int argc,char* argv[])
 	printf("Tris Server!\n");
 	
 	//creazione del socket di ascolto
-	sk = socket(AF_INET, SOCK_STREAM, 0);
+	server = socket(AF_INET, SOCK_STREAM, 0);
 	
-	if(sk == -1)
+	if(server == -1)
 	{
 		perror("Errore nella creazione del socket");
 		exit(EXIT_FAILURE);
 	}
 	
+	/*
 	//Copia dell'indirizzo passato nella variabile ip
 	if(strcmp(argv[1], "localhost") == 0)
 		strcpy(ip, "127.0.0.1");
 	else
 		strcpy(ip, argv[1]);
+	*/
+	
 	
 	//inizializzazione delle strutture dati
 	memset(&my_addr, 0, sizeof(my_addr));
 	my_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(atoi(argv[2]));
-	inet_pton(AF_INET, ip, &server_addr.sin_addr.s_addr);
+	inet_pton(AF_INET, argv[1], &server_addr.sin_addr.s_addr);
 	
 	//bind del socket	
-	if(bind(sk, (SA *) &my_addr, sizeof(my_addr)) == -1)
+	if(bind(socket, (SA *) &server_addr, sizeof(server_addr)) == -1)
 	{
 		perror("Errore nell'esecuzione della bind del socket");
 		exit(EXIT_FAILURE);
 	}
 	
 	//messa in ascolto del server sul socket
-	if(listen(sk, 25) == -1)
+	if(listen(server, 25) == -1)
 	{
 		perror("Errore nella messa in ascolto del server");
 		exit(EXIT_FAILURE);

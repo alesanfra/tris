@@ -9,8 +9,8 @@ int main(int argc, char* argv[])
 	struct sockaddr_in server_addr, opponent_addr;
 	packet buffer, server_msg;
 	int server, udp, fdmax, ready_des;
-	int16_t UDPport;
-	char *nickname, ip[16], status=IDLE;
+	uint16_t UDPport;
+	char name[33], status=IDLE;
 	
 	//lista dei descrittori da controllare con la select()
 	fd_set masterset, readset;
@@ -34,11 +34,13 @@ int main(int argc, char* argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	/*
 	//Copia dell'indirizzo passato nella variabile ip
 	if(strcmp(argv[1], "localhost") == 0)
 		strcpy(ip, "127.0.0.1");
 	else
 		strcpy(ip, argv[1]);
+	*/
 	
 	//Azzeramento della struttura dati sockaddr_in
 	memset(&server_addr, 0, sizeof(struct sockaddr_in));
@@ -46,7 +48,7 @@ int main(int argc, char* argv[])
 	//Inserimento in sockaddr_in dei paramentri
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(atoi(argv[2]));
-	inet_pton(AF_INET, ip, &server_addr.sin_addr.s_addr);
+	inet_pton(AF_INET, argv[1], &server_addr.sin_addr.s_addr);
 	
 	//connessione al server
 	if(connect(server, (SA *) &server_addr, sizeof(SA)) == -1){
@@ -54,16 +56,15 @@ int main(int argc, char* argv[])
 		exit(EXIT_FAILURE);
 	}
 	
-	//connessione avvenuta, richiesta ed invio di nome e porta
+	//connessione avvenuta
 	printf("\nConnessione al server %s:%s effettuata con successo\n\n", argv[1], argv[2]);
 	
 	//stampo i comandi disponibili
 	printHelp(IDLE);
 	
-	//Inserimento nickname
-	printf("Inserisci il tuo nickname (max 32 caratteri): ");
-	nickname = (char *) malloc(33*sizeof(char));
-	scanf("%s",nickname);
+	//inserimento name
+	printf("Inserisci il tuo name (max 32 caratteri): ");
+	scanf("%s",name);
 	flush();
 	
 	//inserimento della porta UDP di ascolto
@@ -108,36 +109,51 @@ int main(int argc, char* argv[])
 		}
 	}
 	
-	//Invio al server il nickname e la porta UDP di ascolto
+	//Invio al server il name e la porta UDP di ascolto
 	buffer.type = SETUSER;
-	buffer.length = strlen(nickname)+3; //lunghezza stringa + \0 + 2 byte porta
+	buffer.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
 	buffer.payload = (char *) malloc(buffer.length*sizeof(char));
 	*((int16_t *) buffer.payload) = htons(UDPport);
-	strcpy(&buffer.payload[2],nickname);
-	sendPacket(server,&buffer,"Errore invio nickname e porta UDP");
+	strcpy(&buffer.payload[2],name);
+	sendPacket(server,&buffer,"Errore invio name e porta UDP");
 	
 	//Ricevo la conferma dal server
-	server_msg = recvPacket(server,"Errore ricezione controllo nickname");
+	recvPacket(server,&server_msg,"Errore ricezione controllo name");
 
-	//Controllo che il nickname scelto sia libero
+	//Controllo che il name scelto sia libero
 	while(server_msg.payload[0] != true)
 	{
-		printf("Il nome \"%s\" non è disponibile, scegline un'altro (max 32 caratteri): ",nickname);
-		memset(nickname,' ',33);
-		scanf("%s", nickname);
+		printf("Il nome \"%s\" non è disponibile, scegline un'altro (max 32 caratteri): ",name);
+		memset(name,' ',33);
+		scanf("%s", name);
 		flush();
-		buffer.length = strlen(nickname)+3; //lunghezza stringa + \0 + 2 byte porta
+		buffer.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
 		free(buffer.payload);
 		buffer.payload = (char *) malloc(buffer.length*sizeof(char));
 		*((int16_t *) buffer.payload) = htons(UDPport);
-		strcpy(&buffer.payload[2],nickname);
-		sendPacket(server,&buffer,"Errore invio nickname e porta UDP");
+		strcpy(&buffer.payload[2],name);
+		sendPacket(server,&buffer,"Errore invio name e porta UDP");
 		
 		//Ricevo la conferma dal server
-		server_msg = recvPacket(server,"Errore ricezione controllo nickname");
+		free(server_msg.payload);
+		recvPacket(server,&server_msg,"Errore ricezione controllo name");
 	}
 	
+	//Dealloco il payload del pacchetto ricevuto e azzero la struttura
+	free(server_msg.payload);
+	memset(&server_msg,0,sizeof(server_msg));
+	
 	/*Da questo punto in poi il client è pronto a giocare*/
+	
+	//Setto i bit relativi ai descrittori da controllare con la select
+	FD_SET(sever, &masterset);
+	FD_SET(des_stdin, &masterset);
+	
+	//Cerco il massimo descrittore da controllare
+	if(server < des_stdin)
+		fdmax = des_stdin;
+	else
+		fdmax = server;
 	
 	for(;;)
 	{
@@ -145,7 +161,16 @@ int main(int argc, char* argv[])
 			printf("> ");
 		else
 			printf("# ");
-			
+		
+		//Copio il masterset perché la select lo modifica
+		readset = masterset;
+		
+		if(select(fdmax+1, &readset, NULL, NULL, NULL) == -1)
+		{
+			perror("Server-select() error!");
+			exit(EXIT_FAILURE);
+		}
+	
 		
 	}
 	return 0;

@@ -12,12 +12,14 @@
 #include <errno.h>
 #include <netinet/in.h>
 
+typedef char bool;
+typedef struct packet_str packet;
+typedef struct player_str player;
+
 #define SA struct sockaddr
-#define packet struct packet_str
-#define player struct player_str
 
 //Tipi dell'header inviati dai client
-#define SETUSER 10 //invia nickname e porta
+#define SETUSER 10 //invia name e porta
 #define WHO 11 //chiede gli utenti connessi
 #define GETPORT 12 //chiede la porta UDP di ascolto di un utente
 #define SETBUSY 13 //comunica al server che l'utente è occupato
@@ -26,6 +28,7 @@
 #define QUIT 16 //chiude la connessione con il server
 
 //Tipi dell'header inviati dal server
+#define NOTVALID 0
 #define REPLYUSER 20
 #define USERLIST 21
 #define USERNAME 22
@@ -54,14 +57,15 @@ struct packet_str
 
 struct player_str
 {
+	int socket;
 	char* name;
-	int16_t UDPport;
+	uint16_t UDPport;
 	struct sockaddr_in address;
-	struct player_str *next;
+	struct player_str* next;
 };
 
 //Dichiarazioni delle funzioni definite in tris_lib.c
 
 void flush();
-void sendPacket(int socket, packet* buffer, const char* message);
-packet recvPacket(int socket, const char* message);
+void sendPacket(int socket, packet* buffer, const char* error_message);
+void recvPacket(int socket, packet* buffer, const char* error_message);
