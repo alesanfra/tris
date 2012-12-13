@@ -8,7 +8,7 @@ void flush()
 void sendPacket(int socket, packet* buffer, const char* error_message)
 {
 	char* send_buffer;
-	send_buffer = (char *) malloc((buffer->length+2)*sizeof(char));
+	send_buffer = (char *) calloc((buffer->length)+2, sizeof(char));
 	
 	//costruzione del pacchetto da inviare
 	send_buffer[0] = buffer->type;
@@ -35,7 +35,7 @@ void recvPacket(int socket, packet* buffer, const char* error_message)
 	}
 	
 	//allocazione dello spazio necessario a conetenere il payload
-	buffer->payload = (char *) malloc((buffer->length)*sizeof(char));
+	buffer->payload = (char *) calloc(buffer->length, sizeof(char));
 	
 	if(recv(socket, (void *) buffer->payload, buffer->length, MSG_WAITALL) == -1)
 	{
@@ -43,4 +43,3 @@ void recvPacket(int socket, packet* buffer, const char* error_message)
 		exit(EXIT_FAILURE);
 	}
 }
-

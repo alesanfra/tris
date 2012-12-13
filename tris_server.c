@@ -1,31 +1,49 @@
 #include "tris_lib.h"
 
-int main(int argc,char* argv[])
+//lista dei client connessi al server
+player *clients = NULL;
+
+//numero dei client connessi al server
+int NUM_CLIENTS = 0;
+
+void acceptPlayer(int socket);
+player* getBySocket(int socket);
+player* getByName(char* name);
+void rmPlayer(player* pl);
+bool handleRequest(int socket);
+bool runAction(int socket);
+
+int main(int argc, char* argv[])
 {
 	//allocazione delle strutture dati necessarie
-	struct sockaddr_in server_addr;
-	player* clients;
-	packet buffer_in, buffer_out;
-	int server, fdmax, ready_des;
+	struct sockaddr_in my_addr;
+	int listener, fdmax, ready, yes=1;
 	
 	//lista dei descrittori da controllare con la select()
-	fd_set masterset, readset;
-	
+	fd_set masterreadset, masterwriteset, readset, writeset;
+
+	//inizializzazione degli fd_set
+	FD_ZERO(&masterreadset);
+	FD_ZERO(&readset);
+	FD_ZERO(&masterwriteset);
+	FD_ZERO(&writeset);
+
 	//controllo numero argomenti passati
 	if(argc != 3){
 		printf("Usage: tris_client <host remoto> <porta>\n");
 		exit(EXIT_FAILURE);
 	}
 	
-	//Verbose
-	printf("Tris Server!\n");
-	
-	//creazione del socket di ascolto
-	server = socket(AF_INET, SOCK_STREAM, 0);
-	
-	if(server == -1)
+	//creazione del socket di ascolto	
+	if(listener = socket(AF_INET, SOCK_STREAM, 0) == -1)
 	{
 		perror("Errore nella creazione del socket");
+		exit(EXIT_FAILURE);
+	}
+	
+	//Modifica delle opzioni del socket listener
+	if(setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1){
+		perror("Errore nella modifica delle opzioni del socket listener");
 		exit(EXIT_FAILURE);
 	}
 	
@@ -36,45 +54,69 @@ int main(int argc,char* argv[])
 	else
 		strcpy(ip, argv[1]);
 	*/
-	
-	
-	//inizializzazione delle strutture dati
+		
+	//inizializzazione della sockaddr_in con ip e porta
 	memset(&my_addr, 0, sizeof(my_addr));
 	my_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(atoi(argv[2]));
-	inet_pton(AF_INET, argv[1], &server_addr.sin_addr.s_addr);
+	my_addr.sin_port = htons(atoi(argv[2]));
+	inet_pton(AF_INET, argv[1], &my_addr.sin_addr.s_addr);
 	
 	//bind del socket	
-	if(bind(socket, (SA *) &server_addr, sizeof(server_addr)) == -1)
+	if(bind(listener, (SA *) &my_addr, sizeof(my_addr)) == -1)
 	{
 		perror("Errore nell'esecuzione della bind del socket");
 		exit(EXIT_FAILURE);
 	}
 	
 	//messa in ascolto del server sul socket
-	if(listen(server, 25) == -1)
+	if(listen(listener, 25) == -1)
 	{
 		perror("Errore nella messa in ascolto del server");
 		exit(EXIT_FAILURE);
 	}
 	
-	//dimensioni della struttura dove viene salvato l'ind del client
-	len = sizeof(cl_addr);
-	
-	//ciclo in cui il server accetta connessioni in ingresso e le gestisce
+	//inizializzazione delle strutture dati utilizzate nella select()
+	FD_SET(listener, &masterreadset);
+	fdmax = listener;
+
+	//ciclo in cui il server chiama la select() ed esegue le azioni richieste
 	for(;;)
 	{
-		//accettazione delle connessioni ingresso
-		cn_sk = accept(sk, (SA *) &cl_addr, (socklen_t *) &len);
+		//copio readset e writeset perché vengono modificati dalla select()
+		readset = masterreadset;
+		writeset = masterwriteset;
 		
-		if(cn_sk == -1)
+		//chiamo la select
+		if(select(fdmax+1, &readset, &writeset, NULL, NULL) == -1)
 		{
-			perror("Errore nell'accettazione di una richiesta");
-			return 0;
+			perror("Errore nella select()");
+			exit(EXIT_FAILURE);
 		}
 		
-		//gestione delle richieste
-		//replyToClient(cn_sk);
+		//ciclo in cui scorro i descrittori e gestisco quelli pronti
+		for(ready = 0; ready <= fdmax; ready++)
+		{
+			//controllo se ready è un descrittore pronto in lettura
+			if(FD_ISSET(ready,&readset))
+			{
+				//se il descrittore pronto e' listener accetto il client
+				if(ready == listener)
+				{
+					acceptPlayer(ready);
+				}
+				else //altrimenti gestisco la richiesta di un client
+				{
+					handleRequest(ready);
+				}
+			}
+			
+			//controllo se ready è un descrittore pronto in scrittura
+			if(FD_ISSET(ready,&writeset))
+			{
+				runAction(ready);
+			}
+			
+		}
 	}
 	
 	//Chiusura del socket di ascolto
@@ -82,7 +124,84 @@ int main(int argc,char* argv[])
 	//dopo un ciclo infinito
 	
 	printf("\nChiusura del server\n");
-	close(sk);
+	close(listener);
 	return 0;	
 }
+
+void acceptPlayer(int socket)
+{
+	//alloco le strutture dati necessarie
+	int len = sizeof(struct sockaddr_in);	
+	player* new = (player *) malloc(sizeof(player));
+	memset(new, 0, sizeof(player));
+	
+	//accetto la connessione
+	new->socket = accept(socket, (SA *) &new->address,(socklen_t *) &len);
+	
+	if(new->socket == -1)
+	{
+		perror("Errore nell'accettazione di una richiesta");
+		free(new);
+		return;
+	}
+	
+	printf("Connessione stabilita con il client");
+	
+	//inserisco il client nel master readset
+	FD_SET(new->socket, &masterreadset);
+	if(new->socket > fdmax)
+		fdmax = new->socket;
+	
+	//inserisco il client nella lista
+	new->next = clients;
+	clients  = new;
+}
+
+player* getBySocket(int socket)
+{
+	player* pl = clients;
+	
+	while(pl != NULL && pl->socket != socket)
+		pl = pl->next;
+		
+	return pl;
+}
+
+player* getByName(char* name)
+{
+	player* pl = clients;
+	
+	while(pl != NULL && strcmp(name,pl->name) != 0)
+		pl = pl->next;
+		
+	return pl;
+}
+
+void rmPlayer(player* pl)
+{
+	player** temp = &clients;
+	
+	if(pl == NULL)
+		return;
+		
+	//inserisco il client nel master readset
+	FD_CLR(temp->socket, &masterreadset);
+	
+	//se temp->socket era il max cerco il nuovo fd massimo
+	if(temp->socket == fdmax)
+		for(; fdmax > 0; fdmax--)
+			if(FD_ISSET(fdmax, &masterreadset))
+				break;
+	
+	while(*temp != pl)
+		temp = &((*temp)->next);
+	
+	//rimuovo l'oggetto dalla lista
+	*temp = (*temp)->next;
+	
+	//dealloco l'oggetto
+	free(pl->name); //deallocare una stringa?
+	free(pl);
+}
+
 

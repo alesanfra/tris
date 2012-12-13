@@ -13,8 +13,6 @@
 #include <netinet/in.h>
 
 typedef char bool;
-typedef struct packet_str packet;
-typedef struct player_str player;
 
 #define SA struct sockaddr
 
@@ -48,21 +46,22 @@ typedef struct player_str player;
 
 //Strutture dati
 
-struct packet_str
+typedef struct packet_str
 {
 	unsigned char type; //tipo del payload
 	unsigned char length; //lunghezza del payload
 	char* payload;
-};
+} packet;
 
-struct player_str
+typedef struct player_str
 {
 	int socket;
 	char* name;
+	unsigned char status;
 	uint16_t UDPport;
 	struct sockaddr_in address;
 	struct player_str* next;
-};
+} player;
 
 //Dichiarazioni delle funzioni definite in tris_lib.c
 

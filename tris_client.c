@@ -7,10 +7,11 @@ int main(int argc, char* argv[])
 {
 	//dichiarazioni delle variabili
 	struct sockaddr_in server_addr, opponent_addr;
+	struct timeval timeout = {60,0};
 	packet buffer, server_msg;
-	int server, udp, fdmax, ready_des;
+	int server, udp, fdmax, ready;
 	uint16_t UDPport;
-	char name[33], status=IDLE;
+	char name[33], status=IDLE, cmd = 0;
 	
 	//lista dei descrittori da controllare con la select()
 	fd_set masterset, readset;
@@ -114,7 +115,7 @@ int main(int argc, char* argv[])
 	buffer.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
 	buffer.payload = (char *) malloc(buffer.length*sizeof(char));
 	*((int16_t *) buffer.payload) = htons(UDPport);
-	strcpy(&buffer.payload[2],name);
+	strcpy(&(buffer.payload[2]),name);
 	sendPacket(server,&buffer,"Errore invio name e porta UDP");
 	
 	//Ricevo la conferma dal server
@@ -131,7 +132,7 @@ int main(int argc, char* argv[])
 		free(buffer.payload);
 		buffer.payload = (char *) malloc(buffer.length*sizeof(char));
 		*((int16_t *) buffer.payload) = htons(UDPport);
-		strcpy(&buffer.payload[2],name);
+		strcpy(&(buffer.payload[2]),name);
 		sendPacket(server,&buffer,"Errore invio name e porta UDP");
 		
 		//Ricevo la conferma dal server
@@ -146,7 +147,7 @@ int main(int argc, char* argv[])
 	/*Da questo punto in poi il client è pronto a giocare*/
 	
 	//Setto i bit relativi ai descrittori da controllare con la select
-	FD_SET(sever, &masterset);
+	FD_SET(server, &masterset);
 	FD_SET(des_stdin, &masterset);
 	
 	//Cerco il massimo descrittore da controllare
@@ -155,23 +156,63 @@ int main(int argc, char* argv[])
 	else
 		fdmax = server;
 	
+	//ciclo in cui il client chiama la select ed esegue le azioni richieste
 	for(;;)
 	{
+		struct timeval* timer;
+		
 		if(status == IDLE)
+		{
+			//se il client non è in una partita stampo '>' e metto il timer a NULL
 			printf("> ");
+			timer = NULL;
+		}
 		else
+		{
+			//se il client non è in una partita stampo '#' e metto il timer a 60 sec
 			printf("# ");
+			timer = &timeout;
+		}
 		
 		//Copio il masterset perché la select lo modifica
 		readset = masterset;
 		
-		if(select(fdmax+1, &readset, NULL, NULL, NULL) == -1)
+		//eseguo la select()
+		if(select(fdmax+1, &readset, NULL, NULL, timer) == -1)
 		{
-			perror("Server-select() error!");
+			perror("Errore nell'esecuzione della select()");
 			exit(EXIT_FAILURE);
 		}
-	
 		
+		//ciclo in cui scorro i descrittori e gestisco quelli pronti
+		for(ready = 0; ready <= fdmax; ready++)
+		{
+			//controllo se ready è un descrittore pronto in lettura
+			if(FD_ISSET(ready,&readset))
+			{
+				//se il descrittore pronto lo STDIN eseguo il comando
+				if(ready == des_stdin)
+				{
+					cmd = readCommand();
+					if(cmd == -1)
+					{
+						//Comando non riconosciuto
+						printf("Comando non riconosciuto!\n");
+						printHelp(status);
+						continue;
+					}
+					else
+					{
+						//Comando riconosciuto
+						executeCommand(cmd);
+					}
+				}
+				else //altrimenti ricevo un pacchetto dal socket pronto
+				{
+					handleRequest(ready);
+				}
+			}
+		} //fine ciclo in cui scorro i descrittori
 	}
 	return 0;
 }
