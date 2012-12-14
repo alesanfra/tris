@@ -22,8 +22,10 @@ typedef char bool;
 #define GETPORT 12 //chiede la porta UDP di ascolto di un utente
 #define SETBUSY 13 //comunica al server che l'utente è occupato
 #define SETFREE 14 //comunica al server che l'utente è libero
-#define DISCONNECT 15 //chiude la partita con l'avverario
-#define QUIT 16 //chiude la connessione con il server
+#define CONNECT 15 //chiede al server di connettersi con un utente
+#define DISCONNECT 17 //chiude la partita con l'avverario
+#define QUIT 18 //chiude la connessione con il server
+#define HIT 19 //colpisce la casella indicata
 
 //Tipi dell'header inviati dal server
 #define NOTVALID 0
@@ -33,15 +35,19 @@ typedef char bool;
 #define USERPORT 23
 #define USERSTATUS 24
 
+//Costanti usate all'interno del client
+#define HELP 30
+#define SHOWMAP 31
+
 //Booleani
 #define true 1
 #define false 0
 
 //Status del client
-#define IDLE 1
-#define WAIT 2
-#define MYTURN 3
-#define HISTURN 4
+#define IDLE 41
+#define WAIT 42
+#define MYTURN 43
+#define HISTURN 44
 
 
 //Strutture dati
@@ -51,6 +57,7 @@ typedef struct packet_str
 	unsigned char type; //tipo del payload
 	unsigned char length; //lunghezza del payload
 	char* payload;
+	struct packet_str* next;
 } packet;
 
 typedef struct player_str
@@ -60,6 +67,7 @@ typedef struct player_str
 	unsigned char status;
 	uint16_t UDPport;
 	struct sockaddr_in address;
+	packet* tail;
 	struct player_str* next;
 } player;
 

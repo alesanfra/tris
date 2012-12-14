@@ -6,7 +6,13 @@ player *clients = NULL;
 //numero dei client connessi al server
 int NUM_CLIENTS = 0;
 
-void acceptPlayer(int socket);
+//lista dei descrittori da controllare con la select()
+fd_set masterreadset, masterwriteset;
+
+//massimo descrittore
+int fdmax=0;
+
+void acceptPlayer(int sk);
 player* getBySocket(int socket);
 player* getByName(char* name);
 void rmPlayer(player* pl);
@@ -17,10 +23,8 @@ int main(int argc, char* argv[])
 {
 	//allocazione delle strutture dati necessarie
 	struct sockaddr_in my_addr;
-	int listener, fdmax, ready, yes=1;
-	
-	//lista dei descrittori da controllare con la select()
-	fd_set masterreadset, masterwriteset, readset, writeset;
+	int listener, ready, yes=1;
+	fd_set readset, writeset;
 
 	//inizializzazione degli fd_set
 	FD_ZERO(&masterreadset);
@@ -35,12 +39,13 @@ int main(int argc, char* argv[])
 	}
 	
 	//creazione del socket di ascolto	
-	if(listener = socket(AF_INET, SOCK_STREAM, 0) == -1)
+	if((listener = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		perror("Errore nella creazione del socket");
 		exit(EXIT_FAILURE);
 	}
 	
+	/*
 	//Modifica delle opzioni del socket listener
 	if(setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1){
 		perror("Errore nella modifica delle opzioni del socket listener");
@@ -102,7 +107,11 @@ int main(int argc, char* argv[])
 				//se il descrittore pronto e' listener accetto il client
 				if(ready == listener)
 				{
+					printf("prima della accept\n");
+					fflush(stdout);
 					acceptPlayer(ready);
+					printf("dopo la accept\n");
+					fflush(stdout);
 				}
 				else //altrimenti gestisco la richiesta di un client
 				{
@@ -128,7 +137,7 @@ int main(int argc, char* argv[])
 	return 0;	
 }
 
-void acceptPlayer(int socket)
+void acceptPlayer(int sk)
 {
 	//alloco le strutture dati necessarie
 	int len = sizeof(struct sockaddr_in);	
@@ -136,7 +145,7 @@ void acceptPlayer(int socket)
 	memset(new, 0, sizeof(player));
 	
 	//accetto la connessione
-	new->socket = accept(socket, (SA *) &new->address,(socklen_t *) &len);
+	new->socket = accept(sk, (SA *) &(new->address),(socklen_t *) &len);
 	
 	if(new->socket == -1)
 	{
@@ -145,12 +154,21 @@ void acceptPlayer(int socket)
 		return;
 	}
 	
-	printf("Connessione stabilita con il client");
+	printf("Connessione stabilita con il client\n");
+	fflush(stdout);
 	
 	//inserisco il client nel master readset
 	FD_SET(new->socket, &masterreadset);
 	if(new->socket > fdmax)
 		fdmax = new->socket;
+		
+	//setto i campi del player
+	new->name = (char *) malloc(sizeof(char));
+	*(new->name) = '\0'; 
+	new->status = IDLE;
+	new->UDPport = 0;
+	memset(&(new->address), 0, sizeof(struct sockaddr_in));
+	new->tail = NULL;
 	
 	//inserisco il client nella lista
 	new->next = clients;
@@ -171,8 +189,14 @@ player* getByName(char* name)
 {
 	player* pl = clients;
 	
-	while(pl != NULL && strcmp(name,pl->name) != 0)
+	printf("prima della ricerca\n");
+	fflush(stdout);
+	
+	while(pl != NULL && (strcmp(name,pl->name) != 0))
 		pl = pl->next;
+		
+	printf("trovato player: %i\n",(int) pl);
+	fflush(stdout);
 		
 	return pl;
 }
@@ -185,10 +209,10 @@ void rmPlayer(player* pl)
 		return;
 		
 	//inserisco il client nel master readset
-	FD_CLR(temp->socket, &masterreadset);
+	FD_CLR((*temp)->socket, &masterreadset);
 	
 	//se temp->socket era il max cerco il nuovo fd massimo
-	if(temp->socket == fdmax)
+	if((*temp)->socket == fdmax)
 		for(; fdmax > 0; fdmax--)
 			if(FD_ISSET(fdmax, &masterreadset))
 				break;
@@ -200,8 +224,54 @@ void rmPlayer(player* pl)
 	*temp = (*temp)->next;
 	
 	//dealloco l'oggetto
-	free(pl->name); //deallocare una stringa?
+	free(pl->name);
 	free(pl);
 }
 
+bool runAction(int socket)
+{
+	
+	
+	return true;
+}
+
+bool handleRequest(int socket)
+{
+	packet buffer_in, buffer_out;
+	char* user;
+	
+	//ricevo il pacchetto dal client
+	recvPacket(socket,&buffer_in,"Errore ricezione pacchetto dal client");
+	
+	
+	switch(buffer_in.type)
+	{
+		case SETUSER:
+			user = &(buffer_in.payload[2]);
+			printf("utente: %s\n",user);
+			//preparo la risposta
+			buffer_out.type = REPLYUSER;
+			buffer_out.length = 1;
+			buffer_out.payload = (char *) malloc(sizeof(char));
+			
+			if(getByName(user) == NULL)
+				*(buffer_out.payload) = true;
+			else
+				*(buffer_out.payload) = false;
+			
+			printf("prima invio pacchetto: %s\n",buffer_out.payload);
+			fflush(stdout);
+			
+			sendPacket(socket,&buffer_out,"Errore invio risposta");
+			
+			printf("dopo invio pacchetto");
+			fflush(stdout);
+			break;
+		
+		default:
+			break;
+	}
+	
+	return true;
+}
 

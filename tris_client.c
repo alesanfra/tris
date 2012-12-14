@@ -1,7 +1,11 @@
 #include "tris_lib.h"
 
 //Dichiarazioni delle funzioni definite dopo il main()
-void printHelp(int match);
+void printHelp(int status);
+int readCommand();
+bool executeCommand(char status);
+void replyToServer(int socket);
+void playTurn(int socket, char status);
 
 int main(int argc, char* argv[])
 {
@@ -11,7 +15,7 @@ int main(int argc, char* argv[])
 	packet buffer, server_msg;
 	int server, udp, fdmax, ready;
 	uint16_t UDPport;
-	char name[33], status=IDLE, cmd = 0;
+	char name[33], status=IDLE;
 	
 	//lista dei descrittori da controllare con la select()
 	fd_set masterset, readset;
@@ -30,7 +34,7 @@ int main(int argc, char* argv[])
 	}
 
 	//creazione del socket TCP
-	if(server = socket(PF_INET, SOCK_STREAM, 0) == -1){
+	if((server = socket(PF_INET, SOCK_STREAM, 0)) == -1){
 		perror("Errore nella creazione del socket TCP");
 		exit(EXIT_FAILURE);
 	}
@@ -51,8 +55,10 @@ int main(int argc, char* argv[])
 	server_addr.sin_port = htons(atoi(argv[2]));
 	inet_pton(AF_INET, argv[1], &server_addr.sin_addr.s_addr);
 	
+	
 	//connessione al server
-	if(connect(server, (SA *) &server_addr, sizeof(SA)) == -1){
+	if(connect(server, (SA *) &server_addr, sizeof(SA)) == -1)
+	{
 		perror("errore nella connessione al server");
 		exit(EXIT_FAILURE);
 	}
@@ -74,7 +80,7 @@ int main(int argc, char* argv[])
 	flush();
 	
 	//creazione del socket UDP
-	if(udp = socket(AF_INET, SOCK_DGRAM, 0) == -1){
+	if((udp = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
 		perror("Errore nella creazione del socket UDP");
 		exit(EXIT_FAILURE);
 	}
@@ -156,6 +162,8 @@ int main(int argc, char* argv[])
 	else
 		fdmax = server;
 	
+	printf("Prima del for\n");
+	
 	//ciclo in cui il client chiama la select ed esegue le azioni richieste
 	for(;;)
 	{
@@ -174,11 +182,13 @@ int main(int argc, char* argv[])
 			timer = &timeout;
 		}
 		
+		fflush(stdout);
+		
 		//Copio il masterset perché la select lo modifica
 		readset = masterset;
 		
 		//eseguo la select()
-		if(select(fdmax+1, &readset, NULL, NULL, timer) == -1)
+		if(select(fdmax+1, &readset, NULL, NULL, NULL) == -1)
 		{
 			perror("Errore nell'esecuzione della select()");
 			exit(EXIT_FAILURE);
@@ -189,30 +199,22 @@ int main(int argc, char* argv[])
 		{
 			//controllo se ready è un descrittore pronto in lettura
 			if(FD_ISSET(ready,&readset))
-			{
+			{				
 				//se il descrittore pronto lo STDIN eseguo il comando
 				if(ready == des_stdin)
-				{
-					cmd = readCommand();
-					if(cmd == -1)
-					{
-						//Comando non riconosciuto
-						printf("Comando non riconosciuto!\n");
-						printHelp(status);
-						continue;
-					}
-					else
-					{
-						//Comando riconosciuto
-						executeCommand(cmd);
-					}
-				}
-				else //altrimenti ricevo un pacchetto dal socket pronto
-				{
-					handleRequest(ready);
-				}
+					executeCommand(status);
+				
+				//altrimenti ricevo un pacchetto dal server
+				else if(ready == server) 
+					replyToServer(ready);
+				
+				//oppure ancora sono in una partita
+				else if(status == MYTURN || status == HISTURN)
+					playTurn(ready,status);
 			}
 		} //fine ciclo in cui scorro i descrittori
+		
+		printf("\n");
 	}
 	return 0;
 }
@@ -223,13 +225,114 @@ void printHelp(int status)
 	printf("\nSono disponibili i seguenti comandi:\n");
 	printf(" * !help --> mostra l'elenco dei comandi disponibili\n");
 	if(status == IDLE)
+	{
 		printf(" * !who --> mostra l'elenco dei client connessi al server\n");
-	printf(" * !connect nome_client --> avvia una partita con l'utente nome_client\n");
+		printf(" * !connect nome_client --> avvia una partita con l'utente nome_client\n");
+	}
 	printf(" * !disconnect --> disconnette il client dall'attuale partita\n");
 	printf(" * !quit --> disconnette il client dal server\n");
 	printf(" * !show_map --> mostra la mappa del gioco\n");
 	printf(" * !hit num_cell --> marca la casella num_cell (valido quando e' il proprio turno)\n\n");
 }
 
-
+//legge un comando dallo STDIN e ne restituisce il codice numerico
+int readCommand()
+{
+	char command[12];
 	
+	//leggo dallo stdin la prima stringa
+	scanf("%s",command);
+	flush();
+	
+	//ricavo il codice numerico associato
+	
+	if(strcmp(command,"!help") == 0)
+		return HELP;
+		
+	else if(strcmp(command,"!who") == 0)
+		return WHO;
+	
+	else if(strcmp(command,"!quit") == 0)
+		return QUIT;
+	
+	else if(strcmp(command,"!connect") == 0)
+		return CONNECT;
+		
+	else if(strcmp(command,"!disconnect") == 0)
+		return DISCONNECT;
+	
+	else if(strcmp(command,"!show_map") == 0)
+		return SHOWMAP;
+	
+	else
+		return -1;
+}
+
+//esegue un comando
+bool executeCommand(char status)
+{
+	char* user;
+	int cmd = readCommand();
+	int length = 0;
+	
+	//Comando non riconosciuto
+	if(cmd == -1)
+	{
+		printf("Comando non riconosciuto!\n");
+		printHelp(status);
+		return false;
+	}
+	
+	//se il comando è CONNECT prelevo dallo stdin il nome 
+	if(cmd == CONNECT)
+	{
+		user = (char *) calloc(33,sizeof(char));
+		scanf("%s",user);
+		flush();
+		length = strlen(user) + 1;
+		user = realloc(user,length);
+	}
+	
+	switch(cmd)
+	{
+		case HELP:
+			printHelp(status);
+			break;
+			
+		case WHO:
+			break;
+			
+		case CONNECT:
+			//connectToUser(char* name);
+			break;
+			
+		case DISCONNECT:
+			break;
+			
+		case QUIT:
+			break;
+		
+		case SHOWMAP:
+			break;
+			
+		case HIT:
+			break;
+			
+		default:
+			return false;
+	}
+	
+	return true;
+}
+
+void replyToServer(int socket)
+{
+	
+}
+
+void playTurn(int socket,char status)
+{
+	
+
+}
+
