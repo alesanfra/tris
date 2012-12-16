@@ -3,16 +3,17 @@
 //Dichiarazioni delle funzioni definite dopo il main()
 void printHelp(int status);
 int readCommand();
-bool executeCommand(char status);
+bool executeCommand(int socket, char status);
 void replyToServer(int socket);
 void playTurn(int socket, char status);
+void askWho(int socket);
 
 int main(int argc, char* argv[])
 {
 	//dichiarazioni delle variabili
 	struct sockaddr_in server_addr, opponent_addr;
 	struct timeval timeout = {60,0};
-	packet buffer, server_msg;
+	packet buffer_in, buffer_out;
 	int server, udp, fdmax, ready;
 	uint16_t UDPport;
 	char name[33], status=IDLE;
@@ -28,24 +29,18 @@ int main(int argc, char* argv[])
 	FD_ZERO(&readset);
 	
 	//controllo numero argomenti passati
-	if(argc != 3){
+	if(argc != 3)
+	{
 		printf("Usage: tris_client <host remoto> <porta>\n");
 		exit(EXIT_FAILURE);
 	}
 
 	//creazione del socket TCP
-	if((server = socket(PF_INET, SOCK_STREAM, 0)) == -1){
+	if((server = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+	{
 		perror("Errore nella creazione del socket TCP");
 		exit(EXIT_FAILURE);
 	}
-
-	/*
-	//Copia dell'indirizzo passato nella variabile ip
-	if(strcmp(argv[1], "localhost") == 0)
-		strcpy(ip, "127.0.0.1");
-	else
-		strcpy(ip, argv[1]);
-	*/
 	
 	//Azzeramento della struttura dati sockaddr_in
 	memset(&server_addr, 0, sizeof(struct sockaddr_in));
@@ -62,7 +57,7 @@ int main(int argc, char* argv[])
 		perror("errore nella connessione al server");
 		exit(EXIT_FAILURE);
 	}
-	
+		
 	//connessione avvenuta
 	printf("\nConnessione al server %s:%s effettuata con successo\n\n", argv[1], argv[2]);
 	
@@ -117,38 +112,38 @@ int main(int argc, char* argv[])
 	}
 	
 	//Invio al server il name e la porta UDP di ascolto
-	buffer.type = SETUSER;
-	buffer.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
-	buffer.payload = (char *) malloc(buffer.length*sizeof(char));
-	*((int16_t *) buffer.payload) = htons(UDPport);
-	strcpy(&(buffer.payload[2]),name);
-	sendPacket(server,&buffer,"Errore invio name e porta UDP");
+	buffer_out.type = SETUSER;
+	buffer_out.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
+	buffer_out.payload = (char *) malloc(buffer_out.length*sizeof(char));
+	*((int16_t *) buffer_out.payload) = htons(UDPport);
+	strcpy(&(buffer_out.payload[2]),name);
+	sendPacket(server,&buffer_out,"Errore invio name e porta UDP");
 	
 	//Ricevo la conferma dal server
-	recvPacket(server,&server_msg,"Errore ricezione controllo name");
+	recvPacket(server,&buffer_in,"Errore ricezione controllo name");
 
 	//Controllo che il name scelto sia libero
-	while(server_msg.payload[0] != true)
+	while(buffer_in.payload[0] != true)
 	{
 		printf("Il nome \"%s\" non è disponibile, scegline un'altro (max 32 caratteri): ",name);
 		memset(name,' ',33);
 		scanf("%s", name);
 		flush();
-		buffer.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
-		free(buffer.payload);
-		buffer.payload = (char *) malloc(buffer.length*sizeof(char));
-		*((int16_t *) buffer.payload) = htons(UDPport);
-		strcpy(&(buffer.payload[2]),name);
-		sendPacket(server,&buffer,"Errore invio name e porta UDP");
+		buffer_out.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
+		free(buffer_out.payload);
+		buffer_out.payload = (char *) malloc(buffer_out.length*sizeof(char));
+		*((int16_t *) buffer_out.payload) = htons(UDPport);
+		strcpy(&(buffer_out.payload[2]),name);
+		sendPacket(server,&buffer_out,"Errore invio name e porta UDP");
 		
 		//Ricevo la conferma dal server
-		free(server_msg.payload);
-		recvPacket(server,&server_msg,"Errore ricezione controllo name");
+		free(buffer_in.payload);
+		recvPacket(server,&buffer_in,"Errore ricezione controllo name");
 	}
 	
 	//Dealloco il payload del pacchetto ricevuto e azzero la struttura
-	free(server_msg.payload);
-	memset(&server_msg,0,sizeof(server_msg));
+	free(buffer_in.payload);
+	memset(&buffer_in,0,sizeof(buffer_in));
 	
 	/*Da questo punto in poi il client è pronto a giocare*/
 	
@@ -161,8 +156,6 @@ int main(int argc, char* argv[])
 		fdmax = des_stdin;
 	else
 		fdmax = server;
-	
-	printf("Prima del for\n");
 	
 	//ciclo in cui il client chiama la select ed esegue le azioni richieste
 	for(;;)
@@ -188,7 +181,7 @@ int main(int argc, char* argv[])
 		readset = masterset;
 		
 		//eseguo la select()
-		if(select(fdmax+1, &readset, NULL, NULL, NULL) == -1)
+		if(select(fdmax+1, &readset, NULL, NULL, timer) == -1)
 		{
 			perror("Errore nell'esecuzione della select()");
 			exit(EXIT_FAILURE);
@@ -202,7 +195,7 @@ int main(int argc, char* argv[])
 			{				
 				//se il descrittore pronto lo STDIN eseguo il comando
 				if(ready == des_stdin)
-					executeCommand(status);
+					executeCommand(server,status);
 				
 				//altrimenti ricevo un pacchetto dal server
 				else if(ready == server) 
@@ -213,8 +206,6 @@ int main(int argc, char* argv[])
 					playTurn(ready,status);
 			}
 		} //fine ciclo in cui scorro i descrittori
-		
-		printf("\n");
 	}
 	return 0;
 }
@@ -269,7 +260,7 @@ int readCommand()
 }
 
 //esegue un comando
-bool executeCommand(char status)
+bool executeCommand(int socket, char status)
 {
 	char* user;
 	int cmd = readCommand();
@@ -300,6 +291,7 @@ bool executeCommand(char status)
 			break;
 			
 		case WHO:
+			askWho(socket);
 			break;
 			
 		case CONNECT:
@@ -334,5 +326,30 @@ void playTurn(int socket,char status)
 {
 	
 
+}
+
+void askWho(int socket)
+{
+	packet buffer;
+	uint16_t num = 0;
+	
+	buffer.type = WHO;
+	buffer.length = 0;
+	buffer.payload = NULL;
+	sendPacket(socket,&buffer,"Errore invio richiesta WHO");
+	printf("Richiesta inviata\n");
+	fflush(stdout);
+	recvPacket(socket,&buffer,"Errore ricezione numero giocatori");
+	printf("Numero client ricevuti\n");
+	fflush(stdout);
+	num = *((uint16_t *) buffer.payload);
+	printf("Numero giocatori connessi al server: %i\n",num);
+	
+	for(;num > 0; num--)
+	{
+		recvPacket(socket,&buffer,"Errore ricezione lista giocatori");
+		printf("%s\n",buffer.payload);
+		free(buffer.payload);
+	}	
 }
 

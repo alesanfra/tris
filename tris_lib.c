@@ -13,33 +13,50 @@ void sendPacket(int socket, packet* buffer, const char* error_message)
 	//costruzione del pacchetto da inviare
 	send_buffer[0] = buffer->type;
 	send_buffer[1] = buffer->length;
-	strcpy(&send_buffer[2], buffer->payload);
 	
-	if(send(socket, (void *) send_buffer, buffer->length+2, 0) == -1)
+	if(buffer->length != 0)
+		strcpy(&send_buffer[2], buffer->payload);
+	
+	if(send(socket, (void *) send_buffer, (buffer->length) + 2, 0) == -1)
 	{
 		perror(error_message);
 		exit(EXIT_FAILURE);
 	}
 }
 
-void recvPacket(int socket, packet* buffer, const char* error_message)
+int recvPacket(int socket, packet* buffer, const char* error_message)
 {
+	int ret = 0;
+	
 	//azzero la struttura dati
 	memset(buffer,0,sizeof(buffer));
 	
 	//ricezione dell'header del pacchetto
-	if(recv(socket, (void *) buffer, 2, MSG_WAITALL) == -1)
+	ret = recv(socket, (void *) buffer, 2, MSG_WAITALL);
+	if(ret < 1)
 	{
-		perror(error_message);
-		exit(EXIT_FAILURE);
+		if(ret < 0)
+			perror(error_message);
+			
+		return ret;
 	}
 	
 	//allocazione dello spazio necessario a conetenere il payload
-	buffer->payload = (char *) calloc(buffer->length, sizeof(char));
+	if(buffer->length == 0)
+		return 2;
+	else
+		buffer->payload = (char *) calloc(buffer->length, sizeof(char));
 	
-	if(recv(socket, (void *) buffer->payload, buffer->length, MSG_WAITALL) == -1)
+	//ricezione del payload del pacchetto
+	ret = recv(socket, (void *) buffer->payload, buffer->length, 0);
+	if(ret < buffer->length)
 	{
-		perror(error_message);
-		exit(EXIT_FAILURE);
+		if(ret != 0)
+			perror(error_message);
+			
+		return ret;
 	}
+	
+	//restituisco il numero di byte letti sul socket
+	return ret+2;
 }

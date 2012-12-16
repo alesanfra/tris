@@ -75,4 +75,4 @@ typedef struct player_str
 
 void flush();
 void sendPacket(int socket, packet* buffer, const char* error_message);
-void recvPacket(int socket, packet* buffer, const char* error_message);
+int recvPacket(int socket, packet* buffer, const char* error_message);
