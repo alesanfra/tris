@@ -5,8 +5,9 @@ void printHelp(int status);
 int readCommand();
 bool executeCommand(int socket, char status);
 void replyToServer(int socket);
-void playTurn(int socket, char status);
+void playTurn(int socket, char status,char* map);
 void askWho(int socket);
+void connectToUser(int socket, char *name);
 
 int main(int argc, char* argv[])
 {
@@ -16,7 +17,7 @@ int main(int argc, char* argv[])
 	packet buffer_in, buffer_out;
 	int server, udp, fdmax, ready;
 	uint16_t UDPport;
-	char name[33], status=IDLE;
+	char name[33], map[9], status=IDLE;
 	
 	//lista dei descrittori da controllare con la select()
 	fd_set masterset, readset;
@@ -120,7 +121,11 @@ int main(int argc, char* argv[])
 	sendPacket(server,&buffer_out,"Errore invio name e porta UDP");
 	
 	//Ricevo la conferma dal server
-	recvPacket(server,&buffer_in,"Errore ricezione controllo name");
+	if(recvPacket(server,&buffer_in,"Errore ricezione pacchetto dal client") < 1)
+	{
+		printf("Disconnesso dal server \n");
+		exit(EXIT_FAILURE);
+	}
 
 	//Controllo che il name scelto sia libero
 	while(buffer_in.payload[0] != true)
@@ -138,14 +143,18 @@ int main(int argc, char* argv[])
 		
 		//Ricevo la conferma dal server
 		free(buffer_in.payload);
-		recvPacket(server,&buffer_in,"Errore ricezione controllo name");
+		if(recvPacket(server,&buffer_in,"Errore ricezione pacchetto dal client") < 1)
+		{
+			printf("Disconnesso dal server \n");
+			exit(EXIT_FAILURE);
+		}
 	}
 	
 	//Dealloco il payload del pacchetto ricevuto e azzero la struttura
 	free(buffer_in.payload);
 	memset(&buffer_in,0,sizeof(buffer_in));
 	
-	/*Da questo punto in poi il client è pronto a giocare*/
+	/* Da questo punto in poi il client è pronto a giocare */
 	
 	//Setto i bit relativi ai descrittori da controllare con la select
 	FD_SET(server, &masterset);
@@ -161,6 +170,7 @@ int main(int argc, char* argv[])
 	for(;;)
 	{
 		struct timeval* timer;
+		int ret = 0;
 		
 		if(status == IDLE)
 		{
@@ -181,12 +191,16 @@ int main(int argc, char* argv[])
 		readset = masterset;
 		
 		//eseguo la select()
-		if(select(fdmax+1, &readset, NULL, NULL, timer) == -1)
+		ret = select(fdmax+1, &readset, NULL, NULL, timer);
+		if(ret == -1)
 		{
 			perror("Errore nell'esecuzione della select()");
 			exit(EXIT_FAILURE);
 		}
-		
+		else if(ret == 0)
+		{
+			printf("Sono passati 60 secondi!");
+		}
 		//ciclo in cui scorro i descrittori e gestisco quelli pronti
 		for(ready = 0; ready <= fdmax; ready++)
 		{
@@ -202,8 +216,8 @@ int main(int argc, char* argv[])
 					replyToServer(ready);
 				
 				//oppure ancora sono in una partita
-				else if(status == MYTURN || status == HISTURN)
-					playTurn(ready,status);
+				else if((status == MYTURN || status == HISTURN) && ready == udp)
+					playTurn(ready,status,map);
 			}
 		} //fine ciclo in cui scorro i descrittori
 	}
@@ -233,7 +247,6 @@ int readCommand()
 	
 	//leggo dallo stdin la prima stringa
 	scanf("%s",command);
-	flush();
 	
 	//ricavo il codice numerico associato
 	
@@ -279,10 +292,12 @@ bool executeCommand(int socket, char status)
 	{
 		user = (char *) calloc(33,sizeof(char));
 		scanf("%s",user);
-		flush();
+		user[32] = '\0';
 		length = strlen(user) + 1;
 		user = realloc(user,length);
 	}
+	
+	flush();
 	
 	switch(cmd)
 	{
@@ -295,7 +310,7 @@ bool executeCommand(int socket, char status)
 			break;
 			
 		case CONNECT:
-			//connectToUser(char* name);
+			connectToUser(socket,user);
 			break;
 			
 		case DISCONNECT:
@@ -319,14 +334,27 @@ bool executeCommand(int socket, char status)
 
 void replyToServer(int socket)
 {
-	
+	printf("\nDisconnesso dal server\n");
+	exit(EXIT_FAILURE);
 }
 
-void playTurn(int socket,char status)
+
+void playTurn(int socket,char status,char* map)
 {
+	packet buffer;
+	
+	if(recvPacket(socket,&buffer,"Errore ricezione messaggio dall'avversario") < 1)
+		return;
+	
+	if(status == HISTURN && buffer.type == HIT && buffer.payload[0] > 0 && buffer.payload[0] < 10)
+	{
+		if(map[(int)buffer.payload[0]] == ' ')
+			map[(int)buffer.payload[0]] = 'O';
+	}
 	
 
 }
+
 
 void askWho(int socket)
 {
@@ -337,9 +365,11 @@ void askWho(int socket)
 	buffer.length = 0;
 	buffer.payload = NULL;
 	sendPacket(socket,&buffer,"Errore invio richiesta WHO");
-	printf("Richiesta inviata\n");
-	fflush(stdout);
-	recvPacket(socket,&buffer,"Errore ricezione numero giocatori");
+	if(recvPacket(socket,&buffer,"Errore ricezione numero giocatori") < 1)
+	{
+		printf("Disconnesso dal server\n");
+		exit(EXIT_FAILURE);
+	}
 	printf("Numero client ricevuti\n");
 	fflush(stdout);
 	num = *((uint16_t *) buffer.payload);
@@ -347,9 +377,49 @@ void askWho(int socket)
 	
 	for(;num > 0; num--)
 	{
-		recvPacket(socket,&buffer,"Errore ricezione lista giocatori");
+		if(recvPacket(socket,&buffer,"Errore ricezione lista giocatori") < 1)
+		{
+			printf("Disconnesso dal server\n");
+			exit(EXIT_FAILURE);
+		}
 		printf("%s\n",buffer.payload);
 		free(buffer.payload);
 	}	
 }
 
+void connectToUser(int socket, char *name)
+{
+	packet buffer;
+	
+	buffer.type = CONNECT;
+	buffer.length = strlen(name)+1;
+	buffer.payload = name;
+	
+	sendPacket(socket,&buffer,"Errore invio richiesta CONNECT");
+	if(recvPacket(socket,&buffer,"Errore ricezione numero giocatori") < 1)
+	{
+		printf("Disconnesso dal server\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(buffer.payload[0] == NOTFOUND)
+	{
+		printf("Impossibile connettersi a %s: utente inesistente.\n",name);
+		return;
+	}
+	if(buffer.payload[0] == YOURSELF)
+	{
+		printf("Impossibile connettersi a %s: non puoi giocare con te stesso.\n",name);
+		return;
+	}
+	if(buffer.payload[0] == REFUSE)
+	{
+		printf("Impossibile connettersi a %s: l'utente ha rifiutato la partita.\n",name);
+		return;
+	}
+	if(buffer.payload[0] != ACCEPT)
+	{
+		printf("Impossibile connettersi a %s: errore del server.\n",name);
+		return;
+	}
+}

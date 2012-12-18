@@ -29,9 +29,9 @@ typedef char bool;
 
 //Tipi dell'header inviati dal server
 #define NOTVALID 0
-#define REPLYUSER 20
-#define USERLIST 21
-#define USERNAME 22
+#define REPLYUSER 20 //risposta con un booleano
+#define USERLIST 21 //invio di un player nel formato <port><name>
+#define PLAYREQ 22
 #define USERPORT 23
 #define USERSTATUS 24
 
@@ -49,6 +49,11 @@ typedef char bool;
 #define MYTURN 43
 #define HISTURN 44
 
+//Risposte alla CONNECT
+#define NOTFOUND 0
+#define YOURSELF 1
+#define REFUSE 2
+#define ACCEPT 3
 
 //Strutture dati
 
@@ -63,6 +68,7 @@ typedef struct packet_str
 typedef struct player_str
 {
 	int socket;
+	int opponent;
 	char* name;
 	unsigned char status;
 	uint16_t UDPport;

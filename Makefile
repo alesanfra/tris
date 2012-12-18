@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g
 
 
-all: tris_server tris_client clear_objects
+all: tris_server tris_client 
 
 tris_server: tris_server.o tris_lib.o
 	$(CC) $(CFLAGS) -o tris_server tris_server.o tris_lib.o
