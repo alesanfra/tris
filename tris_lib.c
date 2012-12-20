@@ -15,13 +15,16 @@ void sendPacket(int socket, packet* buffer, const char* error_message)
 	send_buffer[1] = buffer->length;
 	
 	if(buffer->length != 0)
-		strcpy(&send_buffer[2], buffer->payload);
+		memcpy(&send_buffer[2], buffer->payload, buffer->length);
 	
 	if(send(socket, (void *) send_buffer, (buffer->length) + 2, 0) == -1)
 	{
 		perror(error_message);
 		exit(EXIT_FAILURE);
 	}
+	
+	//dealloco il buffer di invio
+	free(send_buffer);
 }
 
 int recvPacket(int socket, packet* buffer, const char* error_message)

@@ -62,7 +62,7 @@ int main(int argc, char* argv[])
 	}
 	
 	//messa in ascolto del server sul socket
-	if(listen(listener, 25) == -1)
+	if(listen(listener, 10) == -1)
 	{
 		perror("Errore nella messa in ascolto del server");
 		exit(EXIT_FAILURE);
@@ -190,7 +190,7 @@ void rmPlayer(player* pl)
 	//tolgo il client nel master readset
 	FD_CLR((*temp)->socket, &masterreadset);
 	
-	//se temp->socket era il max cerco il nuovo fd massimo
+	//se *temp->socket era il max cerco il nuovo fd massimo
 	if((*temp)->socket == fdmax)
 		for(; fdmax > 0; fdmax--)
 			if(FD_ISSET(fdmax, &masterreadset))
@@ -235,6 +235,16 @@ void handleRequest(int socket)
 		case CONNECT:
 			askToPlay(socket,buffer_in.payload);
 		
+		case MATCHACCEPTED:
+			break;
+			
+		case MATCHREFUSED:
+			break;
+			
+		case QUIT:
+			rmPlayer(getBySocket(socket));
+			break;
+		
 		default:
 			break;
 	}
@@ -260,13 +270,11 @@ void setUser(int socket, char* user, uint16_t UDPport)
 		printf("%s è libero\n",pl->name);
 		
 		//dico al client che il nome richiesto è libero
-		reply = true;
+		addPacket(getBySocket(socket),USERFREE,0,NULL);
 	}
 	else
-		reply = false;
-	
-	//Aggiungo il pacchetto alla coda
-	addPacket(getBySocket(socket),REPLYUSER,1,&reply);
+		//altrimenti dico al client che il nome è occupato
+		addPacket(getBySocket(socket),USERBUSY,0,NULL);
 }
 
 void sendUserList(int socket)
@@ -336,9 +344,15 @@ void addPacket(player *pl, unsigned char type, unsigned char length, char *paylo
 	new = (packet *) malloc(sizeof(packet));
 	new->type = type;
 	new->length = length;
-	new->payload = (char *) malloc(length);
 	
-	memcpy(new->payload,payload,length);
+	if(length != 0)
+	{
+		new->payload = (char *) malloc(length);
+		memcpy(new->payload,payload,length);
+	}
+	else
+		new->payload = NULL;
+	
 	new->next = NULL;
 	
 	//aggiungo il pacchetto in fondo alla lista dei pacchetti da inviare

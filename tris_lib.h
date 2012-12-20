@@ -29,11 +29,14 @@ typedef char bool;
 
 //Tipi dell'header inviati dal server
 #define NOTVALID 0
-#define REPLYUSER 20 //risposta con un booleano
-#define USERLIST 21 //invio di un player nel formato <port><name>
-#define PLAYREQ 22
-#define USERPORT 23
-#define USERSTATUS 24
+#define REPLYUSER 20 //risposta con un char
+#define NAMEFREE 21
+#define NAMEBUSY 22
+#define USERLIST 23 //invio di un player nel formato <port><name>
+#define PLAYREQ 24
+#define MATCHACCEPTED 25
+#define MATCHREFUSED 26
+#define USERADDR 27
 
 //Costanti usate all'interno del client
 #define HELP 30
@@ -50,10 +53,10 @@ typedef char bool;
 #define HISTURN 44
 
 //Risposte alla CONNECT
-#define NOTFOUND 0
-#define YOURSELF 1
-#define REFUSE 2
-#define ACCEPT 3
+#define NOTFOUND 60
+#define YOURSELF 61
+#define REFUSE 62
+#define ACCEPT 63
 
 //Strutture dati
 
