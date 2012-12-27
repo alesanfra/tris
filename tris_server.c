@@ -1,24 +1,26 @@
 #include "tris_lib.h"
 
+//Dichiarazioni delle funzioni definite dopo il main()
+player* getBySocket(int socket);
+player* getByName(char* name);
+void acceptPlayer(int socket);
+void removePlayer(player* pl);
+void handleRequest(int socket);
+void setUser(int socket, char* user, uint16_t UDPport);
+void sendUserList(int socket);
+void askToPlay(int socket, char* name);
+void replyToPlayRequest(int socket, unsigned char type, char* name);
+void addPacket(player* pl, unsigned char type, unsigned char length, char* payload);
+void sendBufferedPacket(int socket);
+
 //lista dei client connessi al server
-player *clients = NULL;
+player* clients = NULL;
 
 //lista dei descrittori da controllare con la select()
 fd_set masterreadset, masterwriteset;
 
 //massimo descrittore
 int fdmax=0;
-
-void acceptPlayer(int);
-player* getBySocket(int);
-player* getByName(char*);
-void rmPlayer(player*);
-void handleRequest(int);
-void setUser(int, char*, uint16_t);
-void sendUserList(int);
-void askToPlay(int, char*);
-void addPacket(player*, unsigned char, unsigned char, char*);
-void sendBufferedPacket(int);
 
 int main(int argc, char* argv[])
 {
@@ -117,7 +119,28 @@ int main(int argc, char* argv[])
 	return 0;	
 }
 
-void acceptPlayer(int sk)
+player* getBySocket(int socket)
+{
+	player* pl = clients;
+	
+	while((pl != NULL) && (pl->socket != socket))
+		pl = pl->next;
+		
+	//se non trova il player restituisce NULL
+	return pl;
+}
+
+player* getByName(char* name)
+{
+	player* pl = clients;
+	
+	while((pl != NULL) && (strcmp(name,pl->name) != 0))
+		pl = pl->next;
+		
+	return pl;
+}
+
+void acceptPlayer(int socket)
 {
 	//alloco le strutture dati necessarie
 	int len = sizeof(struct sockaddr_in);	
@@ -125,7 +148,7 @@ void acceptPlayer(int sk)
 	memset(new, 0, sizeof(player));
 	
 	//accetto la connessione
-	new->socket = accept(sk, (SA *) &(new->address),(socklen_t *) &len);
+	new->socket = accept(socket, (struct sockaddr *) &(new->address),(socklen_t *) &len);
 	
 	if(new->socket == -1)
 	{
@@ -156,28 +179,7 @@ void acceptPlayer(int sk)
 	clients  = new;
 }
 
-player* getBySocket(int socket)
-{
-	player* pl = clients;
-	
-	while((pl != NULL) && (pl->socket != socket))
-		pl = pl->next;
-		
-	//se non trova il player restituisce NULL
-	return pl;
-}
-
-player* getByName(char* name)
-{
-	player* pl = clients;
-	
-	while((pl != NULL) && (strcmp(name,pl->name) != 0))
-		pl = pl->next;
-		
-	return pl;
-}
-
-void rmPlayer(player* pl)
+void removePlayer(player* pl)
 {
 	player** temp = &clients;
 	
@@ -188,10 +190,10 @@ void rmPlayer(player* pl)
 	close(pl->socket);
 	
 	//tolgo il client nel master readset
-	FD_CLR((*temp)->socket, &masterreadset);
+	FD_CLR(pl->socket, &masterreadset);
 	
 	//se *temp->socket era il max cerco il nuovo fd massimo
-	if((*temp)->socket == fdmax)
+	if(pl->socket == fdmax--)
 		for(; fdmax > 0; fdmax--)
 			if(FD_ISSET(fdmax, &masterreadset))
 				break;
@@ -217,7 +219,7 @@ void handleRequest(int socket)
 	//ricevo il pacchetto dal client
 	if(recvPacket(socket,&buffer_in,"Errore ricezione pacchetto dal client") < 1)
 	{
-		rmPlayer(getBySocket(socket));	
+		removePlayer(getBySocket(socket));	
 		return;
 	}
 	
@@ -236,13 +238,15 @@ void handleRequest(int socket)
 			askToPlay(socket,buffer_in.payload);
 		
 		case MATCHACCEPTED:
+			replyToPlayRequest(socket,MATCHACCEPTED,buffer_in.payload);
 			break;
 			
 		case MATCHREFUSED:
+			replyToPlayRequest(socket,MATCHREFUSED,buffer_in.payload);
 			break;
 			
 		case QUIT:
-			rmPlayer(getBySocket(socket));
+			removePlayer(getBySocket(socket));
 			break;
 		
 		default:
@@ -256,8 +260,6 @@ void handleRequest(int socket)
 
 void setUser(int socket, char* user, uint16_t UDPport)
 {
-	bool reply;
-	
 	if(getByName(user) == NULL)
 	{
 		//salvo nome e porta nel descrittore del client
@@ -270,11 +272,11 @@ void setUser(int socket, char* user, uint16_t UDPport)
 		printf("%s è libero\n",pl->name);
 		
 		//dico al client che il nome richiesto è libero
-		addPacket(getBySocket(socket),USERFREE,0,NULL);
+		addPacket(getBySocket(socket),NAMEFREE,0,NULL);
 	}
 	else
 		//altrimenti dico al client che il nome è occupato
-		addPacket(getBySocket(socket),USERBUSY,0,NULL);
+		addPacket(getBySocket(socket),NAMEBUSY,0,NULL);
 }
 
 void sendUserList(int socket)
@@ -282,7 +284,7 @@ void sendUserList(int socket)
 	player* pl = clients, *client = getBySocket(socket);
 	uint16_t num = 0;
 	
-	printf("Richiesta lista client\n");
+	printf("Richiesta lista client da %s\n",client->name);
 	
 	//conto i client connessi
 	while(pl != NULL)
@@ -291,6 +293,9 @@ void sendUserList(int socket)
 			num++;
 		pl = pl->next;
 	}
+	
+	//Metto il numero in formato di rete
+	num = htons(num);
 	
 	//Aggiungo il pacchetto alla lista di pacchetti da inviare al client
 	addPacket(client,REPLYUSER,2,(char *) &num);
@@ -306,34 +311,64 @@ void sendUserList(int socket)
 	}
 }
 
-void askToPlay(int socket, char *name)
+void askToPlay(int socket, char* name)
 {
 	player* source = getBySocket(socket);
 	player* target = getByName(name);
-	char reply;
 	
 	//se il giocatore richiesto non esiste invio NOTFOUND
 	if(target == NULL)
 	{
-		reply = NOTFOUND;
-		addPacket(source,REPLYUSER,1,&reply);
-		return;
+		addPacket(source,NOTFOUND,0,NULL);
 	}
-	if(target == source)
+	//se il giocatore richiesto è il richiedente invio YOURSELF
+	else if(target == source)
 	{
-		reply = YOURSELF;
-		addPacket(source,REPLYUSER,1,&reply);
-		return;
+		addPacket(source,YOURSELF,0,NULL);
 	}
-	//invio al giocatore target una richiesta di gioco
-	addPacket(target,PLAYREQ,strlen(source->name)+1,source->name);
-	printf("Inviata richiesta di gioco a %s da %s\n",target->name,source->name);
-	
-	//salvo nel descrittore del richiedente il target
-	source->opponent = target->socket;
+	else
+	{
+		//invio al giocatore target una richiesta di gioco
+		addPacket(target,PLAYREQ,strlen(source->name)+1,source->name);
+		printf("Inviata richiesta di gioco a %s da %s\n",target->name,source->name);
+		
+		//salvo nel descrittore del richiedente il target
+		source->opponent = target->socket;
+	}
 }
 
-void addPacket(player *pl, unsigned char type, unsigned char length, char *payload)
+void replyToPlayRequest(int socket, unsigned char type, char* name)
+{
+	player* source = getBySocket(socket);
+	player* target = getByName(name);
+	
+	if(target == NULL || target->opponent != socket)
+	{
+		//Il richiedente non esiste o non ha richiesto di giocare
+		addPacket(source,NOTVALID,0,NULL);
+		return;
+	}
+	
+	//invio al target il responso della richiesta
+	addPacket(target,type,0,NULL);
+	
+	if(type == MATCHACCEPTED)
+	{
+		char addr[6]; //2 byte di porta e 4 di ind ip
+		
+		//invio porta e indirizzo ip dell'avversario al target
+		*((uint16_t *) addr) = htons(source->UDPport);
+		*((uint32_t *) &addr[2]) = source->address.sin_addr.s_addr;
+		addPacket(target,USERADDR,6,addr);
+		
+		//invio porta e indirizzo ip del richiedente al source
+		*((uint16_t *) addr) = htons(target->UDPport);
+		*((uint32_t *) &addr[2]) = target->address.sin_addr.s_addr;
+		addPacket(source,USERADDR,6,addr);
+	}
+}
+
+void addPacket(player* pl, unsigned char type, unsigned char length, char* payload)
 {
 	packet **list, *new;
 	
@@ -385,7 +420,10 @@ void sendBufferedPacket(int socket)
 	sendPacket(socket,sending,"Errore invio pacchetto al client");
 	printf("Pacchetto inviato al giocatore: %s\n",pl->name);
 	
+	//Tolgo il pacchetto dalla coda
 	pl->tail = pl->tail->next;
+	
+	//Se non ci sono più pacchetti in coda tolgo il client dal writeset
 	if(pl->tail == NULL)
 		FD_CLR(socket,&masterwriteset);
 	
