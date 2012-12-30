@@ -10,8 +10,9 @@ void setUser(int socket, char* user, uint16_t UDPport);
 void sendUserList(int socket);
 void askToPlay(int socket, char* name);
 void replyToPlayRequest(int socket, unsigned char type, char* name);
+void setFree(int socket);
 void addPacket(player* pl, unsigned char type, unsigned char length, char* payload);
-void sendBufferedPacket(int socket);
+void sendToClient(int socket);
 
 //lista dei client connessi al server
 player* clients = NULL;
@@ -57,7 +58,7 @@ int main(int argc, char* argv[])
 	inet_pton(AF_INET, argv[1], &my_addr.sin_addr.s_addr);
 	
 	//bind del socket	
-	if(bind(listener, (SA *) &my_addr, sizeof(my_addr)) == -1)
+	if(bind(listener, (struct sockaddr *) &my_addr, sizeof(my_addr)) == -1)
 	{
 		perror("Errore nell'esecuzione della bind del socket");
 		exit(EXIT_FAILURE);
@@ -110,7 +111,7 @@ int main(int argc, char* argv[])
 			
 			//controllo se ready è un descrittore pronto in scrittura
 			if(FD_ISSET(ready,&writeset))
-				sendBufferedPacket(ready);
+				sendToClient(ready);
 		}
 	}
 	
@@ -166,10 +167,9 @@ void acceptPlayer(int socket)
 		fdmax = new->socket;
 		
 	//setto i campi del player
-	new->opponent = -1;
+	new->opponent = FREE;
 	new->name = (char *) malloc(sizeof(char));
-	*(new->name) = '\0'; 
-	new->status = IDLE;
+	*(new->name) = '\0';
 	new->UDPport = 0;
 	memset(&(new->address), 0, sizeof(struct sockaddr_in));
 	new->tail = NULL;
@@ -182,6 +182,7 @@ void acceptPlayer(int socket)
 void removePlayer(player* pl)
 {
 	player** temp = &clients;
+	player* opponent;
 	
 	if(pl == NULL)
 		return;
@@ -206,6 +207,12 @@ void removePlayer(player* pl)
 	
 	//Stampo il messaggio a video
 	printf("%s si e' disconnesso\n", pl->name);
+	
+	//Se il giocatore era impegnato in una partita
+	//metto a IDLE l'avversario
+	opponent = getBySocket(pl->opponent);
+	if(opponent != NULL)
+		opponent->opponent = FREE;
 	
 	//dealloco l'oggetto
 	free(pl->name);
@@ -247,6 +254,10 @@ void handleRequest(int socket)
 			
 		case QUIT:
 			removePlayer(getBySocket(socket));
+			break;
+			
+		case SETFREE:
+			setFree(socket);
 			break;
 		
 		default:
@@ -356,6 +367,9 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	{
 		char addr[6]; //2 byte di porta e 4 di ind ip
 		
+		//salvo il client richiedente nel source
+		source->opponent = target->socket;
+		
 		//invio porta e indirizzo ip dell'avversario al target
 		*((uint16_t *) addr) = htons(source->UDPport);
 		*((uint32_t *) &addr[2]) = source->address.sin_addr.s_addr;
@@ -366,6 +380,19 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 		*((uint32_t *) &addr[2]) = target->address.sin_addr.s_addr;
 		addPacket(source,USERADDR,6,addr);
 	}
+	else if(type == MATCHREFUSED)
+	{
+		//segno il target come libero
+		target->opponent = FREE;
+	}
+}
+
+void setFree(int socket)
+{
+	player* pl = getBySocket(socket);
+	
+	if(pl != NULL)
+		pl->opponent = FREE;
 }
 
 void addPacket(player* pl, unsigned char type, unsigned char length, char* payload)
@@ -402,7 +429,7 @@ void addPacket(player* pl, unsigned char type, unsigned char length, char* paylo
 	return;
 }
 
-void sendBufferedPacket(int socket)
+void sendToClient(int socket)
 {
 	player* pl = getBySocket(socket);
 	packet* sending = NULL;

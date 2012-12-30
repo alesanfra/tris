@@ -12,15 +12,10 @@
 #include <errno.h>
 #include <netinet/in.h>
 
-typedef char bool;
-
-#define SA struct sockaddr
-
 //Tipi dell'header inviati dai client
 #define SETUSER 10 //invia name e porta
 #define WHO 11 //chiede gli utenti connessi
 #define GETPORT 12 //chiede la porta UDP di ascolto di un utente
-#define SETBUSY 13 //comunica al server che l'utente è occupato
 #define SETFREE 14 //comunica al server che l'utente è libero
 #define CONNECT 15 //chiede al server di connettersi con un utente
 #define DISCONNECT 17 //chiude la partita con l'avverario
@@ -51,6 +46,7 @@ typedef char bool;
 #define WAIT 42
 #define MYTURN 43
 #define HISTURN 44
+#define FREE -2
 
 //Risposte alla CONNECT
 #define NOTFOUND 60
@@ -58,8 +54,10 @@ typedef char bool;
 #define REFUSE 62
 #define ACCEPT 63
 
-//Strutture dati
+//Definizioni di altri tipi
+typedef char bool;
 
+//Strutture dati
 typedef struct packet_str
 {
 	unsigned char type; //tipo del payload
@@ -73,7 +71,6 @@ typedef struct player_str
 	int socket;
 	int opponent;
 	char* name;
-	unsigned char status;
 	uint16_t UDPport;
 	struct sockaddr_in address;
 	packet* tail;
