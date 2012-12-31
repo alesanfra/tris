@@ -23,8 +23,7 @@
 #define HIT 19 //colpisce la casella indicata
 
 //Tipi dell'header inviati dal server
-#define NOTVALID 0
-#define REPLYUSER 20 //risposta con un char
+#define NOTVALID 20
 #define NAMEFREE 21
 #define NAMEBUSY 22
 #define USERLIST 23 //invio di un player nel formato <port><name>
@@ -32,14 +31,7 @@
 #define MATCHACCEPTED 25
 #define MATCHREFUSED 26
 #define USERADDR 27
-
-//Costanti usate all'interno del client
-#define HELP 30
-#define SHOWMAP 31
-
-//Booleani
-#define true 1
-#define false 0
+#define REPLYWHO 28
 
 //Status del client
 #define IDLE 41
@@ -54,8 +46,10 @@
 #define REFUSE 62
 #define ACCEPT 63
 
-//Definizioni di altri tipi
+//Booleani
 typedef char bool;
+#define true 1
+#define false 0
 
 //Strutture dati
 typedef struct packet_str

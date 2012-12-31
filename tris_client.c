@@ -1,32 +1,30 @@
 #include "tris_lib.h"
 
-//Dichiarazioni delle funzioni definite dopo il main()
+void runCommand(int server, int opponent, char* status, char* opponentname, char map[]);
+void replyToServer(int server, int opponent, char* status, char* opponentname, char map[]);
+void playTurn(int server, int opponent, char* status, char* opponentname, char map[]);
 void printHelp(int status);
-void executeCommand(int socket, char status);
-void replyToServer(int socket);
-void playTurn(int socket, char* status, char* map);
 void askWho(int socket);
-void connectToUser(int socket, char* name);
+void hitCell(unsigned char cell, char* map, char* status, int opponent);
+int connectUDP(int socket, uint32_t ip, uint16_t port);
+void disconnect(int server, int socket, char* status, char* opponentname);
+
+bool checkMap(char* map);
+
+//Lista dei descrittori da controllare con la select()
+fd_set masterset;
+int fdmax = 0;
 
 int main(int argc, char* argv[])
 {
 	//dichiarazioni delle variabili
-	struct sockaddr_in server_addr, myudp_addr;
-	struct timeval timeout = {60,0};
 	packet buffer_in, buffer_out;
-	int server, udp, fdmax, ready;
+	struct sockaddr_in server_addr, udp_addr;
+	int server, opponent, ready;
 	uint16_t UDPport;
-	char name[33], map[9], status=IDLE;
-	
-	//lista dei descrittori da controllare con la select()
-	fd_set masterset, readset;
-	
-	//descrittore dello STDIN
-	const int des_stdin = fileno(stdin);
-	
-	//inizializzazione degli fd_set
-	FD_ZERO(&masterset);
-	FD_ZERO(&readset);
+	char status=IDLE, map[10];
+	char *username, *opponentname = NULL;
+	const int des_stdin = fileno(stdin); //descrittore dello STDIN
 	
 	//controllo numero argomenti passati
 	if(argc != 3)
@@ -52,7 +50,7 @@ int main(int argc, char* argv[])
 	
 	
 	//connessione al server
-	if(connect(server, (SA *) &server_addr, sizeof(SA)) == -1)
+	if(connect(server, (struct sockaddr *) &server_addr, sizeof(struct sockaddr)) == -1)
 	{
 		perror("errore nella connessione al server");
 		exit(EXIT_FAILURE);
@@ -65,8 +63,9 @@ int main(int argc, char* argv[])
 	printHelp(IDLE);
 	
 	//inserimento name
-	printf("Inserisci il tuo name (max 32 caratteri): ");
-	scanf("%s",name);
+	username = (char *) calloc(256,sizeof(char));
+	printf("Inserisci il tuo name: ");
+	scanf("%s",username);
 	flush();
 	
 	//inserimento della porta UDP di ascolto
@@ -75,19 +74,19 @@ int main(int argc, char* argv[])
 	flush();
 	
 	//creazione del socket UDP
-	if((udp = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+	if((opponent = socket(AF_INET, SOCK_DGRAM, 0)) == -1){
 		perror("Errore nella creazione del socket UDP");
 		exit(EXIT_FAILURE);
 	}
 	
 	//inizializzazione della struttura dati
-	memset(&myudp_addr, 0, sizeof(struct sockaddr_in));
-	myudp_addr.sin_family = AF_INET;
-	myudp_addr.sin_port = htons(UDPport);
-	myudp_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	memset(&udp_addr, 0, sizeof(struct sockaddr_in));
+	udp_addr.sin_family = AF_INET;
+	udp_addr.sin_port = htons(UDPport);
+	udp_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 	
 	//controllo che la porta UDP scelta sia disponibile
-	while(bind(udp, (struct sockaddr*) &myudp_addr, sizeof(struct sockaddr_in)) == -1)
+	while(bind(opponent, (struct sockaddr*) &udp_addr, sizeof(struct sockaddr_in)) == -1)
 	{
 		switch(errno)
 		{
@@ -95,14 +94,14 @@ int main(int argc, char* argv[])
 				printf("La porta scelta è occupata, sceglierne un'altra: ");
 				scanf("%hu", &UDPport);
 				flush();
-				myudp_addr.sin_port = htons(UDPport);
+				udp_addr.sin_port = htons(UDPport);
 				break;
 				
 			case EACCES:
 				printf("Non hai i permessi per quella porta, prova una porta superiore a 1023: ");
 				scanf("%hu", &UDPport);
 				flush();
-				myudp_addr.sin_port = htons(UDPport);
+				udp_addr.sin_port = htons(UDPport);
 				break;
 				
 			default:
@@ -113,10 +112,10 @@ int main(int argc, char* argv[])
 	
 	//Invio al server il name e la porta UDP di ascolto
 	buffer_out.type = SETUSER;
-	buffer_out.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
+	buffer_out.length = strlen(username)+3; //lunghezza stringa + \0 + 2 byte porta
 	buffer_out.payload = (char *) malloc(buffer_out.length*sizeof(char));
 	*((int16_t *) buffer_out.payload) = htons(UDPport);
-	strcpy(&(buffer_out.payload[2]),name);
+	strcpy(&(buffer_out.payload[2]),username);
 	sendPacket(server,&buffer_out,"Errore invio name e porta UDP");
 	
 	//Ricevo la conferma dal server
@@ -129,15 +128,15 @@ int main(int argc, char* argv[])
 	//Controllo che il name scelto sia libero
 	while(buffer_in.type != NAMEFREE)
 	{
-		printf("Il nome \"%s\" non è disponibile, scegline un'altro (max 32 caratteri): ",name);
-		memset(name,' ',33);
-		scanf("%s", name);
+		printf("Il nome \"%s\" non è disponibile, scegline un'altro: ",username);
+		memset(username,' ',33);
+		scanf("%s", username);
 		flush();
-		buffer_out.length = strlen(name)+3; //lunghezza stringa + \0 + 2 byte porta
+		buffer_out.length = strlen(username)+3; //lunghezza stringa + \0 + 2 byte porta
 		free(buffer_out.payload);
 		buffer_out.payload = (char *) malloc(buffer_out.length*sizeof(char));
 		*((int16_t *) buffer_out.payload) = htons(UDPport);
-		strcpy(&(buffer_out.payload[2]),name);
+		strcpy(&(buffer_out.payload[2]),username);
 		sendPacket(server,&buffer_out,"Errore invio name e porta UDP");
 		
 		//Ricevo la conferma dal server
@@ -148,13 +147,22 @@ int main(int argc, char* argv[])
 		}
 	}
 	
-	//Dealloco il payload del pacchetto ricevuto e azzero la struttura
-	free(buffer_in.payload);
+	//Libero lo spazo non usato da username
+	username = (char *) realloc(username,strlen(username)+1);
+	
+	//Dealloco il payload del pacchetto inviato e azzero le strutture
+	free(buffer_out.payload);
+	memset(&buffer_out,0,sizeof(buffer_out));
 	memset(&buffer_in,0,sizeof(buffer_in));
 	
 	/* Da questo punto in poi il client è pronto a giocare */
+	printf("\n");
 	
-	//Setto i bit relativi ai descrittori da controllare con la select
+	//Azzero la mappa di gioco
+	memset(map,' ',10);
+	
+	//Setto i bit relativi ai descrittori da controllare con la select	
+	FD_ZERO(&masterset);
 	FD_SET(server, &masterset);
 	FD_SET(des_stdin, &masterset);
 	
@@ -167,10 +175,12 @@ int main(int argc, char* argv[])
 	//ciclo in cui il client chiama la select ed esegue le azioni richieste
 	for(;;)
 	{
+		struct timeval timeout = {60,0};
 		struct timeval* timer;
 		int ret = 0;
+		fd_set readset = masterset; //Copio il masterset perché la select lo modifica
 		
-		if(status == IDLE)
+		if(status == IDLE || status == WAIT)
 		{
 			//se il client non è in una partita stampo '>' e metto il timer a NULL
 			printf("> ");
@@ -181,12 +191,8 @@ int main(int argc, char* argv[])
 			//se il client non è in una partita stampo '#' e metto il timer a 60 sec
 			printf("# ");
 			timer = &timeout;
-		}
-		
+		}	
 		fflush(stdout);
-		
-		//Copio il masterset perché la select lo modifica
-		readset = masterset;
 		
 		//eseguo la select()
 		ret = select(fdmax+1, &readset, NULL, NULL, timer);
@@ -212,7 +218,11 @@ int main(int argc, char* argv[])
 			status = IDLE;
 			
 			//Azzero la mappa
-			memset(map,0,9);
+			memset(map,' ',10);
+			
+			//Azzero il nome dell'avversario
+			if(opponentname != NULL)
+				free(opponentname);
 		}
 		
 		//ciclo in cui scorro i descrittori e gestisco quelli pronti
@@ -223,149 +233,296 @@ int main(int argc, char* argv[])
 			{				
 				//se il descrittore pronto lo STDIN eseguo il comando
 				if(ready == des_stdin)
-					executeCommand(server,status);
+					runCommand(server,opponent,&status,opponentname,map);
 				
 				//altrimenti ricevo un pacchetto dal server
-				else if(ready == server) 
-					replyToServer(ready,&status,&masterset,&fdmax,udp);
+				else if(ready == server)
+					replyToServer(server,opponent,&status,opponentname,map);
 				
 				//oppure ancora sono in una partita
-				else if((status == MYTURN || status == HISTURN) && ready == udp)
-					playTurn(ready,&status,map);
+				else if((status == MYTURN || status == HISTURN) && ready == opponent)
+					playTurn(server,opponent,&status,opponentname,map);
 			}
 		}
 	}
 	return 0;
 }
 
-//Stampa l'elenco dei comandi disponibili
-void printHelp(int status)
+//Legge un comando dallo stdin e lo esegue
+void runCommand(int server, int opponent, char* status, char* opponentname, char map[])
 {
-	printf("\nSono disponibili i seguenti comandi:\n");
-	printf(" * !help --> mostra l'elenco dei comandi disponibili\n");
-	if(status == IDLE)
-	{
-		printf(" * !who --> mostra l'elenco dei client connessi al server\n");
-		printf(" * !connect nome_client --> avvia una partita con l'utente nome_client\n");
-	}
-	printf(" * !disconnect --> disconnette il client dall'attuale partita\n");
-	printf(" * !quit --> disconnette il client dal server\n");
-	printf(" * !show_map --> mostra la mappa del gioco\n");
-	printf(" * !hit num_cell --> marca la casella num_cell (valido quando e' il proprio turno)\n\n");
-}
-
-//esegue un comando
-void executeCommand(int socket, char status)
-{
-	char command[12];
+	char* command = calloc(255,sizeof(char));
+	memset(command,'\0',255);
 	
 	//leggo dallo stdin la prima stringa
 	scanf("%s",command);
+	command[254] = '\0';
 	
 	//per ogni comando riconosciuto eseguo le azioni corrispondenti
 	if(strcmp(command,"!help") == 0)
 	{
-		printHelp(status);
+		printHelp(*status);
 	}
 	else if(strcmp(command,"!who") == 0)
 	{
-		askWho(socket);
+		askWho(server);
 	}
 	else if(strcmp(command,"!connect") == 0)
 	{
-		char* user = (char *) calloc(33,sizeof(char));
-		scanf("%s",user);
-		user[32] = '\0';
-		user = realloc(user,strlen(user) + 1);
-		connectToUser(socket,user);
+		packet buffer;
+		if(*status == IDLE)
+		{
+			opponentname = (char *) calloc(255,sizeof(char));
+			scanf("%s",opponentname);
+			opponentname[254] = '\0';
+			opponentname = realloc(opponentname,strlen(opponentname) + 1);
+			buffer.type = CONNECT;
+			buffer.length = strlen(opponentname)+1;
+			buffer.payload = opponentname;
+			sendPacket(server,&buffer,"Errore invio richiesta CONNECT");
+			*status = WAIT;
+		}
+		else
+		{
+			printf("Stai già giocando una partita!");
+			fflush(stdin);
+			
+		}
+		
 	}
 	else if(strcmp(command,"!quit") == 0)
 	{
-		quit();
+		packet buffer = {QUIT,0,NULL,NULL};
+		sendPacket(server,&buffer,"Errore nella disconnessione del server");
+		printf("Disconnessione dal server in corso...\n");
+		close(server);
+		close(opponent);
+		exit(EXIT_SUCCESS);	
 	}
+	//Interrompo la partita e mi disconnetto dall'avversario
 	else if(strcmp(command,"!disconnect") == 0)
 	{
-		
+		if(*status != MYTURN && *status != HISTURN)
+			printf("Non stai giocando nessuna partita!");
+		else
+			disconnect(server,opponent,status,opponentname);
+			
 	}
+	//Se sono in una partita stampo la mappa
 	else if(strcmp(command,"!show_map") == 0)
 	{
-	
+		int i, j;						
+		if(*status != HISTURN && *status != MYTURN)
+			printf("Non sei in una partita!\n");
+		else {
+			for(i = 0; i < 3; i++) {
+				for(j = 1; j < 4; j++)
+					printf("| %c ",map[(i*3)+j]);
+				printf("|\n");
+			}
+		}
 	}
+	//Se sono in una partita colpisco una cella
 	else if(strcmp(command,"!hit") == 0)
 	{
 		unsigned char num_cell = 0;
-		scanf("%d",num_cell);
+		scanf("%hhd",&num_cell);
+		hitCell(num_cell,map,status,opponent);
 	}
+	//Comando non riconosciuto
 	else
-	{	//Comando non riconosciuto
+	{	
 		printf("Comando non riconosciuto!\n");
-		printHelp(status);
+		printHelp(*status);
 	}
-	
+	//Dealloco il comando
+	free(command);
 	flush();
 }
 
-void replyToServer(int socket)
+
+//Riceve un pacchetto dal server e gestisce la richiesta
+void replyToServer(int server, int opponent, char* status, char* opponentname, char map[])
 {
 	packet buffer;
-	char answer = 0;
-	
-	if(recvPacket(socket,&buffer,"Errore ricezione numero giocatori") < 1)
+		
+	if(recvPacket(server,&buffer,"Errore ricezione pacchetto dal server") < 1)
 	{
 		printf("Disconnesso dal server\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if(buffer->type == PLAYREQ)
-	{
-		if(status != IDLE)
-			return;
-		
-		printf("\n%s vuole inziare una partita con te. Accetti? (s/n)",buffer->payload);
-		scanf("%c",&answer);
-		fflush(stdin);
-		
-		if(answer == 's')
-			buffer->type = MATCHACCEPTED;
-		else
-			buffer->type = MATCHREFUSED;
-			
-		sendPacket(socket,&buffer,"Risposta alla richiesta di gioco");
-		
-	//operazioni per l'avvio del gioco	
-		
-	}
 
+	if(buffer.type == PLAYREQ)
+	{
+		char answer;
+
+		//Se il client è occupato rifiuto la partita
+		if(*status != IDLE)
+			answer = 'n';
+		else
+		{	//altrimenti chiedo all'utente
+			printf("\n%s vuole inziare una partita con te. Accetti? (s/n)",buffer.payload);
+			scanf("%c",&answer);
+			fflush(stdin);
+		}
+
+		if(answer == 's')
+		{
+			opponentname = buffer.payload;//salvo il nome dell'avversario
+			buffer.type = MATCHACCEPTED;
+			//preparo la partita
+			memset(map,' ',10);//azzero la mappa
+			map[0] = 'O';//Metto come mio simbolo O
+			*status = WAIT;//attesa dell'ip e la porta
+			FD_SET(opponent,&masterset);//Metto opponent fra i socket da controllare 
+			if(opponent > fdmax)
+				fdmax = opponent;
+		}
+		else
+			buffer.type = MATCHREFUSED;
+		
+		sendPacket(server,&buffer,"Risposta alla richiesta di gioco");
+
+		if(buffer.type == MATCHACCEPTED)
+		{
+			//Ricevo l'indirizzo
+			if(recvPacket(server,&buffer,"Errore ricezione pacchetto dal server") < 1)
+			{
+				printf("Disconnesso dal server\n");
+				exit(EXIT_FAILURE);
+			}
+			
+			if(buffer.type == USERADDR)
+			{	//Se il pacchetto ricevuto è USERADDR connetto il socket UDP
+				connectUDP(opponent,*((uint32_t *) &buffer.payload[2]),*((uint16_t *) buffer.payload));
+				*status = HISTURN;
+			}
+			else
+			{	//Altrimenti 
+				printf("%s non esiste o non e' più disponibile",opponentname);
+				free(opponentname);
+				*status = IDLE;
+			}
+			
+		}
+		free(buffer.payload);
+	}
+	
+	else if(buffer.type == NOTFOUND)
+	{
+		printf("Impossibile connettersi a %s: utente inesistente.\n",opponentname);
+		free(opponentname);
+		*status = IDLE;
+	}
+		
+	else if(buffer.type == YOURSELF)
+	{
+		printf("Impossibile connettersi a %s: non puoi giocare con te stesso.\n",opponentname);
+		free(opponentname);
+		*status = IDLE;
+	}
+	else if(buffer.type == MATCHREFUSED)
+	{
+		printf("Impossibile connettersi a %s: l'utente ha rifiutato la partita.\n",opponentname);
+		free(opponentname);
+		*status = IDLE;
+	}
+	
+	else if(buffer.type == MATCHACCEPTED)
+	{
+		printf("%s ha accettato la partita\n",opponentname);
+		//preparo la partita
+		memset(map,' ',10);//azzero la mappa
+		map[0] = 'X';//Metto come mio simbolo O
+		*status = MYTURN;//Il primo turno spetta a me
+		FD_SET(opponent,&masterset);//Metto opponent fra i socket da controllare 
+		if(opponent > fdmax)
+			fdmax = opponent;
+		
+		if(recvPacket(server,&buffer,"Errore ricezione ip e porta") < 1)
+		{
+			printf("Disconnesso dal server\n");
+			exit(EXIT_FAILURE);
+		}
+		if(buffer.type == USERADDR)
+			connectUDP(opponent,*((uint32_t *) &buffer.payload[2]),*((uint16_t *) buffer.payload));
+		else
+		{
+			printf("Errore ricezione IP e porta");
+			exit(EXIT_FAILURE);
+		}
+		
+		if(buffer.length > 0)
+			free(buffer.payload);
+	}
 }
 
 
-void playTurn(int socket, char* status, char* map)
+void playTurn(int server, int opponent, char* status, char* opponentname, char map[])
 {
 	packet buffer;
 	
-	if(recvPacket(socket,&buffer,"Errore ricezione messaggio dall'avversario") < 1)
+	if(recvPacket(opponent,&buffer,"Errore ricezione messaggio dall'avversario") < 1)
 		return;
 	
 	if(buffer.type == DISCONNECT)
 	{
 		printf("L'avversario si è disconnesso. Hai vinto la partita!");
-		
-		
-		
+		disconnect(server,opponent,status,opponentname);
 	}
 	
 	if(buffer.type == HIT && *status == HISTURN && buffer.payload[0] > 0 && buffer.payload[0] < 10)
 	{
-		if(map[(int)buffer.payload[0]] == ' ')
-			map[(int)buffer.payload[0]] = opponent_symbol;
+		char opponent_symbol = ' ';
+		int cell = buffer.payload[0];
+		if(map[0] == 'O')
+			opponent_symbol = 'X';
+		else
+			opponent_symbol = 'O';
+		
+		if(map[cell] == ' ')
+		{
+			map[cell] = opponent_symbol;
+			printf("L'avversario ha marcato la casella %hhi\n",cell);
+		}
 		else
 			printf("L'avversario ha cercato di marcare una casella già piena\n");
+			
+		if(checkMap(map))
+		{
+			printf("L'avversario ha vinto la partita");
+			memset(map,' ',10);
+			disconnect(server,opponent,status,opponentname);
+		}
 	}
 	
-
+	//Dealloco il payload
+	free(buffer.payload);
 }
 
 
+//Stampa l'elenco dei comandi disponibili
+void printHelp(int status)
+{
+	printf("\nSono disponibili i seguenti comandi:\n");
+	printf(" * !help --> mostra l'elenco dei comandi disponibili\n");
+	printf(" * !who --> mostra l'elenco dei client connessi al server\n");
+	if(status == IDLE)
+	{
+		printf(" * !connect nome_client --> avvia una partita con l'utente nome_client\n");
+	}
+	if(status != IDLE)
+	{
+		printf(" * !disconnect --> disconnette il client dall'attuale partita\n");
+		printf(" * !show_map --> mostra la mappa del gioco\n");
+		printf(" * !hit num_cell --> marca la casella num_cell (valido quando e' il proprio turno)\n");
+	}
+	printf(" * !quit --> disconnette il client dal server\n\n");
+}
+
+
+//Chiede al server la lista dei client connessi
 void askWho(int socket)
 {
 	packet buffer;
@@ -375,16 +532,19 @@ void askWho(int socket)
 	buffer.length = 0;
 	buffer.payload = NULL;
 	sendPacket(socket,&buffer,"Errore invio richiesta WHO");
+	
+	//Ricevo numero giocatori connessi
 	if(recvPacket(socket,&buffer,"Errore ricezione numero giocatori") < 1)
 	{
 		printf("Disconnesso dal server\n");
 		exit(EXIT_FAILURE);
 	}
-	printf("Numero client ricevuti\n");
-	fflush(stdout);
 	num = *((uint16_t *) buffer.payload);
+	num = ntohs(num);
 	printf("Numero giocatori connessi al server: %i\n",num);
+	free(buffer.payload);
 	
+	//Ricevo la lista dei giocatori connessi
 	for(;num > 0; num--)
 	{
 		if(recvPacket(socket,&buffer,"Errore ricezione lista giocatori") < 1)
@@ -394,76 +554,154 @@ void askWho(int socket)
 		}
 		printf("%s\n",buffer.payload);
 		free(buffer.payload);
-	}	
+	}
+	printf("\n");
 }
 
-void connectToUser(int socket, char* name)
+//Segna una casella durante una partita
+void hitCell(unsigned char cell, char* map, char* status, int opponent)
 {
 	packet buffer;
+	int i = 0, num_caselle = 0;
 	
-	buffer.type = CONNECT;
-	buffer.length = strlen(name)+1;
-	buffer.payload = name;
-	
-	sendPacket(socket,&buffer,"Errore invio richiesta CONNECT");
-	if(recvPacket(socket,&buffer,"Errore ricezione numero giocatori") < 1)
+	//Se non è il turno del client mostro un messaggio di errore
+	if(*status != MYTURN)
 	{
-		printf("Disconnesso dal server\n");
+		printf("Non è il tuo turno, non puoi segnare una casella!\n");
+		return;
+	}
+	
+	//Se cell non è compreso tra 1 e 9 mostro un messaggio di errore
+	if(cell < 1 || cell > 9)
+	{
+		printf("Il numero digitato non è una coordinata valida\n");
+		return;
+	}
+	
+	//Se la casella è già segnata mostro un messaggio di errore
+	if(map[cell] == 'X' || map[cell] == 'O')
+	{
+		printf("La casella scelta è già segnata, sceglierne un altra!\n");
+		return;
+	}
+	
+	//Segno la casella
+	map[cell] = map[0];
+	printf("Hai segnato la casella: %hhd\n",cell);
+	
+	//Invio all'avversario il numero [1-9] della casella segnata
+	buffer.payload = malloc(sizeof(char));
+	buffer.payload[0] = cell;
+	sendPacket(opponent,&buffer,"Errore invio coordinata");
+	
+	//Conto le caselle segnate per vedere se la mappa è piena
+	for(i=1; i<10; i++)
+		if(map[i] == 'X' || map[i] == 'O')
+			num_caselle++;
+	
+	//Controllo se la partita è finita
+	if(checkMap(map) || num_caselle == 9)
+	{
+		if(num_caselle == 9)
+			printf("Nessuna ulteriore mossa disponibile, partita terminata.");
+		else
+			printf("Hai vinto la partita!\n");
+		
+		//Metto lo status a IDLE
+		*status = IDLE;
+		
+		//azzero la mappa e il simbolo
+		memset(map,' ',10);
+				
+		//tolgo il readset
+		FD_CLR(opponent,&masterset);
+		
+		if(opponent == fdmax)
+			for(; fdmax > 0; fdmax--)
+				if(FD_ISSET(fdmax,&masterset))
+					break;			
+	}
+	else
+		*status = HISTURN;
+}
+
+//Controlla se sulla mappa c'è una sequenza vincente
+bool checkMap(char* map)
+{
+	int i = 0;
+	
+	//controllo se la mossa è vincente o se la mappa è piena
+	for(i = 0; i < 3; i++)
+	{
+		//controllo righe
+		if((map[(i*3)+1] == 'X' || map[(i*3)+1] == 'O') && map[(i*3)+1] == map[(i*3)+2] && map[(i*3)+1] == map[(i*3)+3])
+			return true;
+		
+		//controllo colonne
+		if((map[i+1] == 'X' || map[i+1] == 'O') && map[i+1] == map[i+4] && map[i+1] == map[i+7])
+			return true;
+	}
+	
+	//controllo diagonale principale
+	if((map[7] == 'X' || map[7] == 'O') && map[7] == map[5] && map[5] == map[3])
+		return true;
+		
+	//controllo diagonale secondaria
+	if((map[1] == 'X' || map[1] == 'O') && map[1] == map[5] && map[5] == map[9])
+		return true;
+	
+	return false;
+}
+
+
+int connectUDP(int socket, uint32_t ip, uint16_t port)
+{
+	struct sockaddr_in address;
+	memset(&address,0,sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_port = port;
+	address.sin_addr.s_addr = ip;
+	
+	//connessione al server
+	if(connect(socket, (struct sockaddr *) &address, sizeof(struct sockaddr)) == -1)
+	{
+		perror("Errore nella connessione al peer");
+		return -1;
+	}
+
+	return 0;
+}
+
+void disconnect(int server, int socket, char* status, char* opponentname)
+{
+	struct sockaddr_in address;
+	
+	//Invio DISCONNECT al peer
+	packet buffer = {DISCONNECT,0,NULL,NULL};
+	sendPacket(socket,&buffer,"Errore disconnessione dal peer");
+	
+	//Dico al server che sono libero
+	buffer.type = SETFREE;
+	sendPacket(server,&buffer,"Errore invio stato al server");
+	
+	free(opponentname);
+	FD_CLR(socket,&masterset);
+	if(socket == fdmax--)
+		for(; fdmax > 0; fdmax--)
+			if(FD_ISSET(fdmax, &masterset))
+				break;
+	
+	memset(&address,0,sizeof(address));	
+	address.sin_family = AF_UNSPEC;
+	
+	//disconnessione dal peer
+	if(connect(socket, (struct sockaddr *) &address, sizeof(struct sockaddr)) == -1)
+	{
+		perror("Errore nella disonnessione dal peer");
 		exit(EXIT_FAILURE);
 	}
 	
-	if(buffer.payload[0] == NOTFOUND)
-	{
-		printf("Impossibile connettersi a %s: utente inesistente.\n",name);
-		return;
-	}
-	if(buffer.payload[0] == YOURSELF)
-	{
-		printf("Impossibile connettersi a %s: non puoi giocare con te stesso.\n",name);
-		return;
-	}
-	if(buffer.payload[0] == REFUSE)
-	{
-		printf("Impossibile connettersi a %s: l'utente ha rifiutato la partita.\n",name);
-		return;
-	}
-	if(buffer.payload[0] != ACCEPT)
-	{
-		printf("Impossibile connettersi a %s: errore del server.\n",name);
-		return;
-	}
+	//metto lo status del client a libero (IDLE)
+	*status = IDLE;
 }
 
-void showMap(char status, char* map)
-{
-	char* line = "+---+---+---+\n\n";
-	
-	if(status != HISTURN && status != MYTURN)
-	{
-		printf("Non sei in una partita!\n");
-		return;
-	}
-	
-	for(i = 0; i < 3; i++)
-	{
-		printf("%s| ",line);
-		for(j = 0; j < 3; j++)
-			printf("%c |",&map[(i*3)+j]);
-		printf("\n\n");
-	}
-	prinf("%s",line);
-}
-
-void quit(int socket)
-{
-	packet buffer;
-	
-	buffer->type = QUIT;
-	buffer->length = 0;
-	buffer->payload = NULL;
-	sendPacket(socket,&buffer,"Errore nella disconnessione del server");
-	printf("Disconnessione dal server in corso...\n");
-	close(socket);
-	exit(EXIT_SUCCESS);	
-}
-	

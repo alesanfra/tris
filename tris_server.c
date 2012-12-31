@@ -194,7 +194,7 @@ void removePlayer(player* pl)
 	FD_CLR(pl->socket, &masterreadset);
 	
 	//se *temp->socket era il max cerco il nuovo fd massimo
-	if(pl->socket == fdmax--)
+	if(pl->socket == fdmax)
 		for(; fdmax > 0; fdmax--)
 			if(FD_ISSET(fdmax, &masterreadset))
 				break;
@@ -210,9 +210,12 @@ void removePlayer(player* pl)
 	
 	//Se il giocatore era impegnato in una partita
 	//metto a IDLE l'avversario
-	opponent = getBySocket(pl->opponent);
-	if(opponent != NULL)
-		opponent->opponent = FREE;
+	if(pl->opponent != FREE)
+	{
+		opponent = getBySocket(pl->opponent);
+		if(opponent != NULL)
+			opponent->opponent = FREE;
+	}
 	
 	//dealloco l'oggetto
 	free(pl->name);
@@ -309,7 +312,7 @@ void sendUserList(int socket)
 	num = htons(num);
 	
 	//Aggiungo il pacchetto alla lista di pacchetti da inviare al client
-	addPacket(client,REPLYUSER,2,(char *) &num);
+	addPacket(client,REPLYWHO,2,(char *) &num);
 	
 	//invio i nomi
 	pl = clients;
@@ -350,8 +353,8 @@ void askToPlay(int socket, char* name)
 
 void replyToPlayRequest(int socket, unsigned char type, char* name)
 {
-	player* source = getBySocket(socket);
-	player* target = getByName(name);
+	player* source = getBySocket(socket);//ha risposto alla richiesta
+	player* target = getByName(name);//ha fatto la richiesta
 	
 	if(target == NULL || target->opponent != socket)
 	{
