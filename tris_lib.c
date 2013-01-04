@@ -26,6 +26,28 @@ void sendPacket(int socket, packet* buffer, const char* error_message)
 	//dealloco il buffer di invio
 	free(send_buffer);
 }
+//~ 
+//~ void sendPacketTo(int socket, packet* buffer,struct sockaddr* recipient, const char* error_message)
+//~ {
+	//~ char* send_buffer;
+	//~ send_buffer = (char *) calloc((buffer->length)+2, sizeof(char));
+	//~ 
+	//~ //costruzione del pacchetto da inviare
+	//~ send_buffer[0] = buffer->type;
+	//~ send_buffer[1] = buffer->length;
+	//~ 
+	//~ if(buffer->length != 0)
+		//~ memcpy(&send_buffer[2], buffer->payload, buffer->length);
+	//~ 
+	//~ if(sendto(socket, (void *) send_buffer, (buffer->length) + 2, 0, recipient, sizeof(*recipient) == -1))
+	//~ {
+		//~ perror(error_message);
+		//~ exit(EXIT_FAILURE);
+	//~ }
+	//~ 
+	//~ //dealloco il buffer di invio
+	//~ free(send_buffer);
+//~ }
 
 int recvPacket(int socket, packet* buffer, const char* error_message)
 {

@@ -171,7 +171,6 @@ void acceptPlayer(int socket)
 	new->name = (char *) malloc(sizeof(char));
 	*(new->name) = '\0';
 	new->UDPport = 0;
-	memset(&(new->address), 0, sizeof(struct sockaddr_in));
 	new->tail = NULL;
 	
 	//inserisco il client nella lista
@@ -368,20 +367,23 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	
 	if(type == MATCHACCEPTED)
 	{
-		char addr[6]; //2 byte di porta e 4 di ind ip
+		//char addr[6]; 2 byte di porta e 4 di ind ip
+		client_addr source_addr, target_addr;
 		
 		//salvo il client richiedente nel source
 		source->opponent = target->socket;
 		
 		//invio porta e indirizzo ip dell'avversario al target
-		*((uint16_t *) addr) = htons(source->UDPport);
-		*((uint32_t *) &addr[2]) = source->address.sin_addr.s_addr;
-		addPacket(target,USERADDR,6,addr);
+		source_addr.ip = source->address.sin_addr.s_addr;
+		source_addr.port = htons(source->UDPport);
+		printf("Inviato a %s l'indirizzo %u : %hu\n",target->name,source_addr.ip,source->UDPport);
+		addPacket(target,USERADDR,6,(char *) &source_addr);
 		
 		//invio porta e indirizzo ip del richiedente al source
-		*((uint16_t *) addr) = htons(target->UDPport);
-		*((uint32_t *) &addr[2]) = target->address.sin_addr.s_addr;
-		addPacket(source,USERADDR,6,addr);
+		target_addr.ip = target->address.sin_addr.s_addr;
+		target_addr.port = htons(target->UDPport);
+		printf("Inviato a %s l'indirizzo %u : %hu\n",source->name,target_addr.ip,target->UDPport);
+		addPacket(source,USERADDR,6,(char *) &target_addr);
 	}
 	else if(type == MATCHREFUSED)
 	{
@@ -428,8 +430,6 @@ void addPacket(player* pl, unsigned char type, unsigned char length, char* paylo
 	
 	//metto il socket nel set di quelli da controllare in scrittura
 	FD_SET(pl->socket,&masterwriteset);
-	
-	return;
 }
 
 void sendToClient(int socket)

@@ -71,6 +71,12 @@ typedef struct player_str
 	struct player_str* next;
 } player;
 
+typedef struct client_addr_str
+{
+	uint32_t ip;
+	uint16_t port;
+} client_addr;
+
 //Dichiarazioni delle funzioni definite in tris_lib.c
 
 void flush();
