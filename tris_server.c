@@ -316,8 +316,18 @@ void sendUserList(int socket)
 	while(pl != NULL)
 	{
 		if(pl->name[0] != '\0')
-			addPacket(client,USERLIST,strlen(pl->name)+1,pl->name);
-
+		{
+			char* username = calloc(strlen(pl->name)+2,sizeof(char));
+			
+			if(pl->opponent == FREE)
+				username[0] = FREE;
+			else
+				username[0] = BUSY;
+				
+			strcpy(username+1,pl->name);
+			addPacket(client,USERLIST,strlen(pl->name)+2,username);
+			free(username);
+		}
 		pl = pl->next;
 	}
 }
@@ -336,6 +346,10 @@ void askToPlay(int socket, char* name)
 	else if(target == source)
 	{	//se il giocatore richiesto è il richiedente invio YOURSELF
 		addPacket(source,YOURSELF,0,NULL);
+	}
+	else if(target->opponent != FREE)
+	{	//se il giocatore richiesto è occupato invio BUSY
+		addPacket(source,BUSY,0,NULL);
 	}
 	else
 	{

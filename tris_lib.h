@@ -38,6 +38,7 @@
 #define WAIT 42
 #define MYTURN 43
 #define HISTURN 44
+#define BUSY 45
 #define FREE -2
 
 //Risposte alla CONNECT

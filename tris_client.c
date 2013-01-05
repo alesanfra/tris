@@ -418,6 +418,13 @@ void replyToServer(int server, int opponent, char* status, char map[])
 		*status = IDLE;
 		return;
 	}
+	else if(action == BUSY)
+	{
+		printf("\nImpossibile connettersi a %s: l'utente e' occupato.\n",opponentname);
+		free(opponentname);
+		*status = IDLE;
+		return;
+	}
 	else if(action == MATCHREFUSED)
 	{
 		printf("\nImpossibile connettersi a %s: l'utente ha rifiutato la partita.\n",opponentname);
@@ -472,7 +479,7 @@ void playTurn(int server, int opponent, char* status, char map[])
 	
 	if(buffer.type == DISCONNECT)
 	{
-		printf("\nL'avversario si è disconnesso. Hai vinto la partita!");
+		printf("\nL'avversario si è disconnesso. Hai vinto la partita!\n");
 		disconnect(server,opponent,status,DONTSIGNAL);
 	}
 	
@@ -580,7 +587,13 @@ void askWho(int socket)
 			printf("Disconnesso dal server\n");
 			exit(EXIT_FAILURE);
 		}
-		printf("%s\n",buffer.payload);
+		printf("%s ",buffer.payload+1);
+		
+		if(buffer.payload[0] == FREE)
+			printf("(libero)\n");
+		else
+			printf("(occupato)\n");
+			
 		free(buffer.payload);
 	}
 	printf("\n");
