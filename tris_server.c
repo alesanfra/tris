@@ -245,13 +245,11 @@ void handleRequest(int socket)
 			
 		case CONNECT:
 			askToPlay(socket,buffer_in.payload);
+			break;
 		
 		case MATCHACCEPTED:
-			replyToPlayRequest(socket,MATCHACCEPTED,buffer_in.payload);
-			break;
-			
 		case MATCHREFUSED:
-			replyToPlayRequest(socket,MATCHREFUSED,buffer_in.payload);
+			replyToPlayRequest(socket,buffer_in.type,buffer_in.payload);
 			break;
 			
 		case QUIT:
@@ -326,24 +324,24 @@ void sendUserList(int socket)
 
 void askToPlay(int socket, char* name)
 {
-	player* source = getBySocket(socket);
-	player* target = getByName(name);
+	player *source, *target;
 	
-	//se il giocatore richiesto non esiste invio NOTFOUND
+	source = getBySocket(socket);
+	target  = getByName(name);
+	
 	if(target == NULL)
-	{
+	{	//se il giocatore richiesto non esiste invio NOTFOUND
 		addPacket(source,NOTFOUND,0,NULL);
 	}
-	//se il giocatore richiesto è il richiedente invio YOURSELF
 	else if(target == source)
-	{
+	{	//se il giocatore richiesto è il richiedente invio YOURSELF
 		addPacket(source,YOURSELF,0,NULL);
 	}
 	else
 	{
 		//invio al giocatore target una richiesta di gioco
 		addPacket(target,PLAYREQ,strlen(source->name)+1,source->name);
-		printf("Inviata richiesta di gioco a %s da %s\n",target->name,source->name);
+		printf("%s ha richiesto di giocare con %s\n",source->name,target->name);
 		
 		//salvo nel descrittore del richiedente il target
 		source->opponent = target->socket;
@@ -352,8 +350,11 @@ void askToPlay(int socket, char* name)
 
 void replyToPlayRequest(int socket, unsigned char type, char* name)
 {
-	player* source = getBySocket(socket);//ha risposto alla richiesta
-	player* target = getByName(name);//ha fatto la richiesta
+	player *source, *target;
+	
+	source = getBySocket(socket);//ha risposto alla richiesta
+	target  = getByName(name);//ha fatto la richiesta
+	
 	
 	if(target == NULL || target->opponent != socket)
 	{
@@ -367,7 +368,6 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	
 	if(type == MATCHACCEPTED)
 	{
-		//char addr[6]; 2 byte di porta e 4 di ind ip
 		client_addr source_addr, target_addr;
 		
 		//salvo il client richiedente nel source
@@ -397,7 +397,10 @@ void setFree(int socket)
 	player* pl = getBySocket(socket);
 	
 	if(pl != NULL)
+	{
 		pl->opponent = FREE;
+		printf("%s e' libero\n",pl->name);
+	}
 }
 
 void addPacket(player* pl, unsigned char type, unsigned char length, char* payload)
@@ -448,7 +451,7 @@ void sendToClient(int socket)
 	//prendo il primo pacchetto in coda e lo invio
 	sending = pl->tail;
 	sendPacket(socket,sending,"Errore invio pacchetto al client");
-	printf("Pacchetto inviato al giocatore: %s\n",pl->name);
+	printf("Pacchetto inviato a %s: %hhu - %hhu\n",pl->name,sending->type,sending->length);
 	
 	//Tolgo il pacchetto dalla coda
 	pl->tail = pl->tail->next;

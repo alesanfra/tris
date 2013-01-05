@@ -46,21 +46,25 @@
 #define REFUSE 62
 #define ACCEPT 63
 
+//Flag
+#define SIGNAL 70
+#define DONTSIGNAL 71
+
 //Booleani
 typedef char bool;
 #define true 1
 #define false 0
 
 //Strutture dati
-typedef struct packet_str
+typedef struct _packet
 {
 	unsigned char type; //tipo del payload
 	unsigned char length; //lunghezza del payload
 	char* payload;
-	struct packet_str* next;
+	struct _packet* next;
 } packet;
 
-typedef struct player_str
+typedef struct _player
 {
 	int socket;
 	int opponent;
@@ -68,10 +72,10 @@ typedef struct player_str
 	uint16_t UDPport;
 	struct sockaddr_in address;
 	packet* tail;
-	struct player_str* next;
+	struct _player* next;
 } player;
 
-typedef struct client_addr_str
+typedef struct _client_addr
 {
 	uint32_t ip;
 	uint16_t port;
@@ -80,5 +84,5 @@ typedef struct client_addr_str
 //Dichiarazioni delle funzioni definite in tris_lib.c
 
 void flush();
-void sendPacket(int socket, packet* buffer, const char* error_message);
+int sendPacket(int socket, packet* buffer, const char* error_message);
 int recvPacket(int socket, packet* buffer, const char* error_message);
