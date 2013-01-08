@@ -390,13 +390,13 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 		//invio porta e indirizzo ip dell'avversario al target
 		source_addr.ip = source->address.sin_addr.s_addr;
 		source_addr.port = htons(source->UDPport);
-		printf("Inviato a %s l'indirizzo %u : %hu\n",target->name,source_addr.ip,source->UDPport);
+		//printf("Inviato a %s l'indirizzo %u : %hu\n",target->name,source_addr.ip,source->UDPport);
 		addPacket(target,USERADDR,6,(char *) &source_addr);
 		
 		//invio porta e indirizzo ip del richiedente al source
 		target_addr.ip = target->address.sin_addr.s_addr;
 		target_addr.port = htons(target->UDPport);
-		printf("Inviato a %s l'indirizzo %u : %hu\n",source->name,target_addr.ip,target->UDPport);
+		//printf("Inviato a %s l'indirizzo %u : %hu\n",source->name,target_addr.ip,target->UDPport);
 		addPacket(source,USERADDR,6,(char *) &target_addr);
 	}
 	else if(type == MATCHREFUSED)
@@ -465,7 +465,7 @@ void sendToClient(int socket)
 	//prendo il primo pacchetto in coda e lo invio
 	sending = pl->tail;
 	sendPacket(socket,sending,"Errore invio pacchetto al client");
-	printf("Pacchetto inviato a %s: %hhu - %hhu\n",pl->name,sending->type,sending->length);
+	//~ printf("Pacchetto inviato a %s: %hhu - %hhu\n",pl->name,sending->type,sending->length);
 	
 	//Tolgo il pacchetto dalla coda
 	pl->tail = pl->tail->next;
