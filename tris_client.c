@@ -281,17 +281,24 @@ void runCommand(int server, int opponent, char* status, char map[])
 			buffer.payload = opponentname;
 			sendPacket(server,&buffer,"Errore invio richiesta CONNECT");
 			*status = WAIT;
-			printf("Richiesta di connessione inviata a %s",opponentname);
+			printf("Richiesta di connessione inviata a %s\n",opponentname);
 		}
 		else
 		{
-			printf("Stai già giocando una partita!");
+			printf("Stai già giocando una partita!\n");
 		}
 		
 	}
 	else if(strcmp(command,"!quit") == 0)
 	{
 		packet buffer = {QUIT,0,NULL,NULL};
+		
+		if(*status == MYTURN || *status == MYTURN)
+		{
+			printf("Disconnessione avvenuta con successo: TI SEI ARRESO\n");
+			disconnect(server,opponent,status,SIGNAL);
+		}
+		
 		sendPacket(server,&buffer,"Errore nella disconnessione del server");
 		printf("Disconnessione dal server in corso...\n");
 		close(server);
@@ -406,7 +413,7 @@ void replyToServer(int server, int opponent, char* status, char map[])
 			}
 			else
 			{	//Altrimenti 
-				printf("%s non esiste o non ha ritirato la richiesta di connessione.\n",opponentname);
+				printf("%s non esiste o ha ritirato la richiesta di connessione.\n",opponentname);
 				fflush(stdout);
 				*status = IDLE;
 			}
@@ -521,13 +528,6 @@ void playTurn(int server, int opponent, char* status, char map[])
 		else
 			printf("\nL'avversario ha cercato di marcare una casella già piena\n");
 			
-		if(checkMap(map))
-		{
-			printf("\n");
-			memset(map,' ',10);
-			disconnect(server,opponent,status,DONTSIGNAL);
-		}
-		
 		//Conto le caselle segnate per vedere se la mappa è piena
 		for(i=1; i<10; i++)
 			if(map[i] == 'X' || map[i] == 'O')
@@ -539,7 +539,7 @@ void playTurn(int server, int opponent, char* status, char map[])
 			if(num_caselle == 9)
 				printf("Nessuna ulteriore mossa disponibile, partita terminata.\n");
 			else
-				printf("L'avversario ha vinto la partita\n");
+				printf("L'avversario ha vinto la partita!\n");
 			
 			//Mi disconnetto
 			disconnect(server,opponent,status,DONTSIGNAL);
