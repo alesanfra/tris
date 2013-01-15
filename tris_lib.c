@@ -1,9 +1,13 @@
 #include "tris_lib.h"
 
+/* Elimina dallo stdin una linea di caratteri */
+
 void flush()
 {
 	while(getchar()!='\n');
 }
+
+/* Invia un pacchetto al socket passato per argomento */
 
 int sendPacket(int socket, packet* buffer, const char* error_message)
 {
@@ -29,6 +33,9 @@ int sendPacket(int socket, packet* buffer, const char* error_message)
 	free(send_buffer);
 	return ret;
 }
+
+
+/* Riceve un pacchetto dal socket passato per argomento */
 
 int recvPacket(int socket, packet* buffer, const char* error_message)
 {

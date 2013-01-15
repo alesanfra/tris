@@ -120,6 +120,10 @@ int main(int argc, char* argv[])
 	return 0;	
 }
 
+
+/* Restituisce il puntatore alla struttura dati "player"
+ * corrispondente al socket passato per argomento */
+
 player* getBySocket(int socket)
 {
 	player* pl = clients;
@@ -127,9 +131,12 @@ player* getBySocket(int socket)
 	while((pl != NULL) && (pl->socket != socket))
 		pl = pl->next;
 		
-	//se non trova il player restituisce NULL
-	return pl;
+	return pl; //se non trova il player restituisce NULL
 }
+
+
+/* Restituisce il puntatore alla struttura dati "player"
+ * corrispondente al nome passato per argomento */
 
 player* getByName(char* name)
 {
@@ -138,9 +145,14 @@ player* getByName(char* name)
 	while((pl != NULL) && (strcmp(name,pl->name) != 0))
 		pl = pl->next;
 		
-	return pl;
+	return pl; //se non trova il player restituisce NULL
 }
 
+
+/* Accetta il client che ha fatto richiesta di connessione sul
+ * socket passato per argomento, crea la strutture dati "player",
+ * la inizializza e la inserisce nella lista client */
+ 
 void acceptPlayer(int socket)
 {
 	//alloco le strutture dati necessarie
@@ -177,6 +189,10 @@ void acceptPlayer(int socket)
 	new->next = clients;
 	clients  = new;
 }
+
+
+/* Chiude il socket del giocatore passato per argomento, lo toglie 
+ * dalla lista e dealloca la struttura dati */
 
 void removePlayer(player* pl)
 {
@@ -220,6 +236,10 @@ void removePlayer(player* pl)
 	free(pl->name);
 	free(pl);
 }
+
+
+/* Riceve un pacchetto dal socket passato come argomento, legge
+ * il tipo e chiama la funzione di gestione della richiesta */
 
 void handleRequest(int socket)
 {
@@ -269,6 +289,11 @@ void handleRequest(int socket)
 		free(buffer_in.payload);
 }
 
+
+/* Imposta al giocatore corrispondente al socket passato per argomento
+ * nome utente e porta anch'essi passati come argomenti. Se il nome 
+ * scelto è già occupato manda la client un messaggio di errore */
+
 void setUser(int socket, char* user, uint16_t UDPport)
 {
 	if(getByName(user) == NULL)
@@ -290,12 +315,16 @@ void setUser(int socket, char* user, uint16_t UDPport)
 		addPacket(getBySocket(socket),NAMEBUSY,0,NULL);
 }
 
+
+/* Invia sul socket passato per argomento la lista dei client connessi
+ * al server in quel momento */
+
 void sendUserList(int socket)
 {
 	player* pl = clients, *client = getBySocket(socket);
 	uint16_t num = 0;
 	
-	printf("Richiesta lista client da %s\n",client->name);
+	printf("%s ha richiesto la lista degli utenti connessi\n",client->name);
 	
 	//conto i client connessi
 	while(pl != NULL)
@@ -332,6 +361,11 @@ void sendUserList(int socket)
 	}
 }
 
+
+/* Invia al giocatore corrispondente al nome passato per argomento
+ * una richiesta di gioco. In caso non sia possibile recapitare la
+ * richiesta invia un messaggio di errore al richiedente */
+
 void askToPlay(int socket, char* name)
 {
 	player *source, *target;
@@ -362,13 +396,17 @@ void askToPlay(int socket, char* name)
 	}
 }
 
+
+/* Gestisce la risposta ad una richiesta di gioco, e in caso di
+ * risposta positiva invia ai giocatori l'indirizzo ip e la porta UDP
+ * dei rispettivi avversari */
+
 void replyToPlayRequest(int socket, unsigned char type, char* name)
 {
 	player *source, *target;
 	
 	source = getBySocket(socket);//ha risposto alla richiesta
 	target  = getByName(name);//ha fatto la richiesta
-	
 	
 	if(target == NULL || target->opponent != socket)
 	{
@@ -406,6 +444,10 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	}
 }
 
+
+/* Imposta lo stato del giocatore corrispondente al socket passato
+ * per argomento al "libero" */
+
 void setFree(int socket)
 {
 	player* pl = getBySocket(socket);
@@ -416,6 +458,10 @@ void setFree(int socket)
 		printf("%s e' libero\n",pl->name);
 	}
 }
+
+
+/* Aggiunge un pacchetto alla coda dei pacchetti da inviare al client
+ * passato per argomento */
 
 void addPacket(player* pl, unsigned char type, unsigned char length, char* payload)
 {
@@ -448,6 +494,10 @@ void addPacket(player* pl, unsigned char type, unsigned char length, char* paylo
 	//metto il socket nel set di quelli da controllare in scrittura
 	FD_SET(pl->socket,&masterwriteset);
 }
+
+
+/* Invia al client corrispondente al socket passato per argomento
+ * il primo pacchetto in coda */
 
 void sendToClient(int socket)
 {

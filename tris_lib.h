@@ -76,7 +76,13 @@ typedef struct _player
 	struct _player* next;
 } player;
 
-typedef struct _client_addr
+typedef struct
+{
+	char* name;
+	int socket;
+} client;
+
+typedef struct
 {
 	uint32_t ip;
 	uint16_t port;
