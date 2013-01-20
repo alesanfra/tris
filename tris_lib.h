@@ -39,7 +39,9 @@
 #define MYTURN 43
 #define HISTURN 44
 #define BUSY 45
+#define ALREADY_REQ 46
 #define FREE -2
+#define PENDING_REQ -3
 
 //Risposte alla CONNECT
 #define NOTFOUND 60
@@ -67,13 +69,13 @@ typedef struct _packet
 
 typedef struct _player
 {
+	char* name;
 	int socket;
 	int opponent;
-	char* name;
-	uint16_t UDPport;
-	struct sockaddr_in address;
 	packet* tail;
 	struct _player* next;
+	struct sockaddr_in address;
+	uint16_t UDPport;
 } player;
 
 typedef struct
@@ -87,6 +89,7 @@ typedef struct
 	uint32_t ip;
 	uint16_t port;
 } client_addr;
+
 
 //Dichiarazioni delle funzioni definite in tris_lib.c
 

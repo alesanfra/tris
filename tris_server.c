@@ -230,7 +230,7 @@ void removePlayer(player* pl)
 		opponent = getBySocket(pl->opponent);
 		if(opponent != NULL)
 			opponent->opponent = FREE;
-	}
+	}	
 	
 	//dealloco l'oggetto
 	free(pl->name);
@@ -381,6 +381,10 @@ void askToPlay(int socket, char* name)
 	{	//se il giocatore richiesto è il richiedente invio YOURSELF
 		addPacket(source,YOURSELF,0,NULL);
 	}
+	else if(target->opponent == PENDING_REQ)
+	{	//se il giocatore richiesto è occupato invio BUSY
+		addPacket(source,ALREADY_REQ,0,NULL);
+	}
 	else if(target->opponent != FREE)
 	{	//se il giocatore richiesto è occupato invio BUSY
 		addPacket(source,BUSY,0,NULL);
@@ -393,6 +397,9 @@ void askToPlay(int socket, char* name)
 		
 		//salvo nel descrittore del richiedente il target
 		source->opponent = target->socket;
+		
+		//blocco il target in modo che nessuno si inserisca
+		target->opponent = PENDING_REQ;
 	}
 }
 
@@ -439,8 +446,9 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	}
 	else if(type == MATCHREFUSED)
 	{
-		//segno il target come libero
+		//segno il target e il source come liberi
 		target->opponent = FREE;
+		source->opponent = FREE;
 	}
 }
 
@@ -528,3 +536,4 @@ void sendToClient(int socket)
 	free(sending->payload);
 	free(sending);
 }
+
