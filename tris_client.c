@@ -830,13 +830,15 @@ void disconnect(int server, client* opponent, char* status, char flag)
 void printMap(char map[], char status)
 {
 	int i, j;
+	char* line = "+ - + - + - +\n";
 		
 	printf("\n");
 	for(i = 2; i >= 0; i--)
 	{
+		printf("%s",line);
 		for(j = 1; j < 4; j++)
 			printf("| %c ",map[(i*3)+j]);
 		printf("|\n");
 	}
-	printf("\n");
+	printf("%s\n",line);
 }
