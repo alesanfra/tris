@@ -53,6 +53,9 @@
 #define SIGNAL 70
 #define DONTSIGNAL 71
 
+//timer
+#define ONE_MINUTE (struct timeval){60,0}
+
 //Booleani
 typedef char bool;
 #define true 1

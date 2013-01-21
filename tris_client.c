@@ -15,6 +15,7 @@ bool checkMap(char* map);
 //Lista dei descrittori da controllare con la select()
 fd_set masterset;
 int fdmax = 0;
+struct timeval timeout = ONE_MINUTE;
 
 int main(int argc, char* argv[])
 {
@@ -54,7 +55,6 @@ int main(int argc, char* argv[])
 	//ciclo in cui il client chiama la select ed esegue le azioni richieste
 	for(;;)
 	{
-		struct timeval timeout = {60,0};
 		struct timeval* timer;
 		int ret = 0, ready = 0;
 		fd_set readset;
@@ -362,6 +362,7 @@ void runCommand(int server, client* opponent, char* status, char map[])
 	flush();
 }
 
+
 /* Riceve un pacchetto dal server ed esegue le operazioni corrispondenti
  * al tipo di richiesta. */
 
@@ -428,6 +429,7 @@ void replyToServer(int server, client* opponent, char* status, char map[])
 					printf("Partita avviata con %s\n",opponent->name);
 					printf("Il tuo simbolo è: %c\n",map[0]);
 					printf("E' il turno di %s:\n",opponent->name);
+					timeout = ONE_MINUTE;
 				}
 			}
 			else
@@ -489,6 +491,7 @@ void replyToServer(int server, client* opponent, char* status, char map[])
 		memset(map,' ',10);//azzero la mappa
 		map[0] = 'X';//Metto come mio simbolo O
 		*status = MYTURN;//Il primo turno spetta a me
+		timeout = ONE_MINUTE;//Inizializzo il timer
 		FD_SET(opponent->socket,&masterset);//Metto opponent fra i socket da controllare 
 		if(opponent->socket > fdmax)
 			fdmax = opponent->socket;
@@ -518,6 +521,7 @@ void replyToServer(int server, client* opponent, char* status, char map[])
 	}
 
 }
+
 
 /* Riceve un pacchetto dall'avversario e esegue le azioni corrispondenti */
 
@@ -581,7 +585,10 @@ void playTurn(int server, client* opponent, char* status, char map[])
 			disconnect(server,opponent,status,DONTSIGNAL);
 		}
 		else
+		{
 			printf("E' il tuo turno:\n");
+			timeout = ONE_MINUTE;
+		}
 	}
 	
 	//Dealloco il payload
@@ -721,6 +728,7 @@ void hitCell(unsigned char cell, char* map, char* status, client* opponent, int 
 	{
 		*status = HISTURN;
 		printf("E' il turno di %s:\n",opponent->name);
+		timeout = ONE_MINUTE;
 	}
 }
 
@@ -775,6 +783,8 @@ int connectUDP(client* opponent, uint32_t ip, uint16_t port)
 	}
 	else
 		printf("\nConnessione a %s (%s:%hu) effettuata\n",opponent->name,ipstring,port);
+
+	
 
 	return 0;
 }
