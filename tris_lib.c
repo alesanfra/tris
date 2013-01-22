@@ -85,3 +85,12 @@ int recvPacket(int socket, packet* buffer, const char* error_message)
 	//restituisco il numero di byte letti sul socket
 	return ret;
 }
+
+void cleanSocket(int socket)
+{
+	char buff;
+	while(recv(socket,(void *)&buff,1,MSG_DONTWAIT) > 0)
+	{
+		//printf("%c\n",buff);
+	}
+}

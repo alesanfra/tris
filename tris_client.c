@@ -468,7 +468,7 @@ void replyToServer(int server, client* opponent, char* status, char map[])
 		*status = IDLE;
 		return;
 	}
-	else if(action == ALREADY_REQ)
+	else if(action == PENDING_REQ)
 	{
 		printf("\nImpossibile connettersi a %s: l'utente ha gia' un'altra richiesta in sospeso\n",opponent->name);
 		free(opponent->name);
@@ -558,13 +558,13 @@ void playTurn(int server, client* opponent, char* status, char map[])
 		if(map[cell] == ' ')
 		{
 			map[cell] = opponent_symbol;
-			printf("\nL'avversario ha marcato la casella %hhi\n",cell);
+			printf("\nL'avversario ha segnato la casella %hhi\n",cell);
 			printMap(map,*status);
 			*status = MYTURN;
 		}
 		else
 		{
-			printf("\nL'avversario ha cercato di marcare una casella già piena\n");
+			printf("\nL'avversario ha cercato di segnare una casella già piena\n");
 			return;
 		}
 			
@@ -651,7 +651,7 @@ void askWho(int socket)
 		}
 		printf("%s ",buffer.payload+1);
 		
-		if(buffer.payload[0] == FREE)
+		if(buffer.payload[0] == IDLE)
 			printf("(libero)\n");
 		else
 			printf("(occupato)\n");
@@ -774,6 +774,9 @@ int connectUDP(client* opponent, uint32_t ip, uint16_t port)
 	address.sin_addr.s_addr = ip;
 	inet_ntop(AF_INET,&address.sin_addr.s_addr,ipstring,16);
 	port = ntohs(port);
+	
+	//Pulizia del socket
+	cleanSocket(opponent->socket);
 	
 	//connessione al server
 	if(connect(opponent->socket, (struct sockaddr *) &address, sizeof(struct sockaddr)) == -1)

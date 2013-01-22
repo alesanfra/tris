@@ -39,9 +39,7 @@
 #define MYTURN 43
 #define HISTURN 44
 #define BUSY 45
-#define ALREADY_REQ 46
-#define FREE -2
-#define PENDING_REQ -3
+#define PENDING_REQ 46
 
 //Risposte alla CONNECT
 #define NOTFOUND 60
@@ -74,11 +72,12 @@ typedef struct _player
 {
 	char* name;
 	int socket;
-	int opponent;
-	packet* tail;
+	struct _packet* packets_tail;
+	struct _player* opponent;
 	struct _player* next;
 	struct sockaddr_in address;
 	uint16_t UDPport;
+	char status;
 } player;
 
 typedef struct
@@ -99,3 +98,4 @@ typedef struct
 void flush();
 int sendPacket(int socket, packet* buffer, const char* error_message);
 int recvPacket(int socket, packet* buffer, const char* error_message);
+void cleanSocket(int socket);

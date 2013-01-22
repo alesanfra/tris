@@ -179,11 +179,12 @@ void acceptPlayer(int socket)
 		fdmax = new->socket;
 		
 	//setto i campi del player
-	new->opponent = FREE;
 	new->name = (char *) malloc(sizeof(char));
 	*(new->name) = '\0';
 	new->UDPport = 0;
-	new->tail = NULL;
+	new->packets_tail = NULL;
+	new->opponent = NULL;
+	new->status = IDLE;
 	
 	//inserisco il client nella lista
 	new->next = clients;
@@ -197,7 +198,6 @@ void acceptPlayer(int socket)
 void removePlayer(player* pl)
 {
 	player** temp = &clients;
-	player* opponent;
 	
 	if(pl == NULL)
 		return;
@@ -225,12 +225,21 @@ void removePlayer(player* pl)
 	
 	//Se il giocatore era impegnato in una partita
 	//metto a IDLE l'avversario
-	if(pl->opponent != FREE)
+	if(pl->status == BUSY && pl->opponent != NULL)
 	{
-		opponent = getBySocket(pl->opponent);
-		if(opponent != NULL)
-			opponent->opponent = FREE;
-	}	
+		pl->opponent->opponent = NULL;
+		pl->status = IDLE;
+	}
+	
+	//Se il giocatore aveva dei messaggi in coda li elimino
+	while(pl->packets_tail != NULL)
+	{
+		packet* pkt = pl->packets_tail;
+		pl->packets_tail = pl->packets_tail->next;
+		if(pkt->length > 0)
+			free(pkt->payload);
+		free(pkt);
+	}
 	
 	//dealloco l'oggetto
 	free(pl->name);
@@ -348,8 +357,8 @@ void sendUserList(int socket)
 		{
 			char* username = calloc(strlen(pl->name)+2,sizeof(char));
 			
-			if(pl->opponent == FREE)
-				username[0] = FREE;
+			if(pl->status == IDLE)
+				username[0] = IDLE;
 			else
 				username[0] = BUSY;
 				
@@ -381,11 +390,11 @@ void askToPlay(int socket, char* name)
 	{	//se il giocatore richiesto è il richiedente invio YOURSELF
 		addPacket(source,YOURSELF,0,NULL);
 	}
-	else if(target->opponent == PENDING_REQ)
+	else if(target->status == PENDING_REQ)
 	{	//se il giocatore richiesto è occupato invio BUSY
-		addPacket(source,ALREADY_REQ,0,NULL);
+		addPacket(source,PENDING_REQ,0,NULL);
 	}
-	else if(target->opponent != FREE)
+	else if(target->status != IDLE)
 	{	//se il giocatore richiesto è occupato invio BUSY
 		addPacket(source,BUSY,0,NULL);
 	}
@@ -396,10 +405,11 @@ void askToPlay(int socket, char* name)
 		printf("%s ha richiesto di giocare con %s\n",source->name,target->name);
 		
 		//salvo nel descrittore del richiedente il target
-		source->opponent = target->socket;
+		source->opponent = target;
+		source->status = WAIT;
 		
 		//blocco il target in modo che nessuno si inserisca
-		target->opponent = PENDING_REQ;
+		target->status = PENDING_REQ;
 	}
 }
 
@@ -415,7 +425,7 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	source = getBySocket(socket);//ha risposto alla richiesta
 	target  = getByName(name);//ha fatto la richiesta
 	
-	if(target == NULL || target->opponent != socket)
+	if(target == NULL || target->opponent != source)
 	{
 		//Il richiedente non esiste o non ha richiesto di giocare
 		addPacket(source,NOTVALID,0,NULL);
@@ -430,7 +440,11 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 		client_addr source_addr, target_addr;
 		
 		//salvo il client richiedente nel source
-		source->opponent = target->socket;
+		source->opponent = target;
+		source->status = BUSY;
+		
+		//metto il richiedente a occupato
+		target->status = BUSY;
 		
 		//invio porta e indirizzo ip dell'avversario al target
 		source_addr.ip = source->address.sin_addr.s_addr;
@@ -447,8 +461,10 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	else if(type == MATCHREFUSED)
 	{
 		//segno il target e il source come liberi
-		target->opponent = FREE;
-		source->opponent = FREE;
+		target->opponent = NULL;
+		target->status = IDLE;
+		source->opponent = NULL;
+		source->status = IDLE;
 	}
 }
 
@@ -462,7 +478,8 @@ void setFree(int socket)
 	
 	if(pl != NULL)
 	{
-		pl->opponent = FREE;
+		pl->opponent = NULL;
+		pl->status = IDLE;
 		printf("%s e' libero\n",pl->name);
 	}
 }
@@ -494,7 +511,7 @@ void addPacket(player* pl, unsigned char type, unsigned char length, char* paylo
 	new->next = NULL;
 	
 	//aggiungo il pacchetto in fondo alla lista dei pacchetti da inviare
-	list = &(pl->tail);
+	list = &(pl->packets_tail);
 	while(*list != NULL)
 		list = &((*list)->next);
 	*list = new;
@@ -514,26 +531,27 @@ void sendToClient(int socket)
 	
 	//se il player non è in lista o non ha pacchetti da spedire
 	//lo tolgo dal write set
-	if(pl == NULL || pl->tail == NULL)
+	if(pl == NULL || pl->packets_tail == NULL)
 	{
 		FD_CLR(socket,&masterwriteset);
 		return;
 	}
 	
 	//prendo il primo pacchetto in coda e lo invio
-	sending = pl->tail;
+	sending = pl->packets_tail;
 	sendPacket(socket,sending,"Errore invio pacchetto al client");
 	//~ printf("Pacchetto inviato a %s: %hhu - %hhu\n",pl->name,sending->type,sending->length);
 	
 	//Tolgo il pacchetto dalla coda
-	pl->tail = pl->tail->next;
+	pl->packets_tail = pl->packets_tail->next;
 	
 	//Se non ci sono più pacchetti in coda tolgo il client dal writeset
-	if(pl->tail == NULL)
+	if(pl->packets_tail == NULL)
 		FD_CLR(socket,&masterwriteset);
 	
 	//Dealloco il payload e la struttura dati
-	free(sending->payload);
+	if(sending->length > 0)
+		free(sending->payload);
 	free(sending);
 }
 
