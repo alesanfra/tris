@@ -69,9 +69,10 @@ int recvPacket(int socket, packet* buffer, const char* error_message)
 	ret = recv(socket, (void *) recv_buffer, buffer->length + 2, 0);
 	if(ret < (buffer->length + 2))
 	{
-		if(ret != 0)
+		if(ret < 0)
 			perror(error_message);
-			
+		else if(ret > 0)
+			printf("Ricevuti meno byte di quelli specificati nell'header\n");
 		return ret;
 	}
 	
@@ -91,6 +92,6 @@ void cleanSocket(int socket)
 	char buff;
 	while(recv(socket,(void *)&buff,1,MSG_DONTWAIT) > 0)
 	{
-		//printf("%c\n",buff);
+		//printf("%c ",buff);
 	}
 }

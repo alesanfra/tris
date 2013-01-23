@@ -330,43 +330,43 @@ void setUser(int socket, char* user, uint16_t UDPport)
 
 void sendUserList(int socket)
 {
-	player* pl = clients, *client = getBySocket(socket);
+	player* list = clients, *pl = getBySocket(socket);
 	uint16_t num = 0;
 	
-	printf("%s ha richiesto la lista degli utenti connessi\n",client->name);
+	printf("%s ha richiesto la lista degli utenti connessi\n",pl->name);
 	
 	//conto i client connessi
-	while(pl != NULL)
+	while(list != NULL)
 	{
-		if(pl->name[0] != '\0')
+		if(list->name[0] != '\0')
 			num++;
-		pl = pl->next;
+		list = list->next;
 	}
 	
 	//Metto il numero in formato di rete
 	num = htons(num);
 	
 	//Aggiungo il pacchetto alla lista di pacchetti da inviare al client
-	addPacket(client,REPLYWHO,2,(char *) &num);
+	addPacket(pl,REPLYWHO,2,(char *) &num);
 	
 	//invio i nomi
-	pl = clients;
-	while(pl != NULL)
+	list = clients;
+	while(list != NULL)
 	{
-		if(pl->name[0] != '\0')
+		if(list->name[0] != '\0')
 		{
-			char* username = calloc(strlen(pl->name)+2,sizeof(char));
+			char* username = calloc(strlen(list->name)+2,sizeof(char));
 			
-			if(pl->status == IDLE)
+			if(list->status == IDLE)
 				username[0] = IDLE;
 			else
 				username[0] = BUSY;
 				
-			strcpy(username+1,pl->name);
-			addPacket(client,USERLIST,strlen(pl->name)+2,username);
+			strcpy(username+1,list->name);
+			addPacket(pl,USERLIST,strlen(list->name)+2,username);
 			free(username);
 		}
-		pl = pl->next;
+		list = list->next;
 	}
 }
 

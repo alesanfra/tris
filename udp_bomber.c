@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 	inet_pton(AF_INET, argv[1], &address.sin_addr.s_addr);
 
 	do{
-		printf("Digita un numero: ");
+		printf(">: ");
 		scanf("%hhi",&buffer);
 		sendto(sk,&buffer,1,0,(struct sockaddr*) &address,sizeof(address));
 	} while(buffer != 0);
