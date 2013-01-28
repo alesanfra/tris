@@ -16,9 +16,12 @@ udp_bomber: udp_bomber.o tris_lib.o
 .c.o:
 	$(CC) $(CFLAGS) -c -o $@ $<
 	
-clear_objects:
+clean_objects:
 	rm -rf *.o
+	
+clear: clean
 
-clear:
+clean:
 	rm -rf *.o tris_server tris_client udp_bomber
+
 	

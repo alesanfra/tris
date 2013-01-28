@@ -208,7 +208,7 @@ void removePlayer(player* pl)
 	//tolgo il client nel master readset
 	FD_CLR(pl->socket, &masterreadset);
 	
-	//se *temp->socket era il max cerco il nuovo fd massimo
+	//se pl->socket era il max cerco il nuovo fd massimo
 	if(pl->socket == fdmax)
 		for(; fdmax > 0; fdmax--)
 			if(FD_ISSET(fdmax, &masterreadset))
@@ -221,7 +221,10 @@ void removePlayer(player* pl)
 	*temp = (*temp)->next;
 	
 	//Stampo il messaggio a video
-	printf("%s si e' disconnesso\n", pl->name);
+	if(pl->name[0] == '\0')
+		printf("Client sconosciuto si e' disconnesso\n");
+	else
+		printf("%s si e' disconnesso\n", pl->name);
 	
 	//Se il giocatore era impegnato in una partita
 	//metto a IDLE l'avversario
@@ -255,7 +258,7 @@ void handleRequest(int socket)
 	packet buffer_in;
 	
 	//ricevo il pacchetto dal client
-	if(recvPacket(socket,&buffer_in,"Errore ricezione pacchetto dal client") < 1)
+	if(recvPacket(socket,&buffer_in,KEEP_ALIVE,"Errore ricezione pacchetto dal client") < 1)
 	{
 		removePlayer(getBySocket(socket));	
 		return;
@@ -391,7 +394,7 @@ void askToPlay(int socket, char* name)
 		addPacket(source,YOURSELF,0,NULL);
 	}
 	else if(target->status == PENDING_REQ)
-	{	//se il giocatore richiesto è occupato invio BUSY
+	{	//se il giocatore richiesto ha già un'altra richiesta invio PENDING_REQ
 		addPacket(source,PENDING_REQ,0,NULL);
 	}
 	else if(target->status != IDLE)
@@ -429,6 +432,7 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 	{
 		//Il richiedente non esiste o non ha richiesto di giocare
 		addPacket(source,NOTVALID,0,NULL);
+		setFree(source->socket);
 		return;
 	}
 	
@@ -457,6 +461,8 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 		target_addr.port = htons(target->UDPport);
 		//printf("Inviato a %s l'indirizzo %u : %hu\n",source->name,target_addr.ip,target->UDPport);
 		addPacket(source,USERADDR,6,(char *) &target_addr);
+		
+		printf("%s ha accettato di giocare con %s\n",source->name,target->name);
 	}
 	else if(type == MATCHREFUSED)
 	{
@@ -465,6 +471,7 @@ void replyToPlayRequest(int socket, unsigned char type, char* name)
 		target->status = IDLE;
 		source->opponent = NULL;
 		source->status = IDLE;
+		printf("%s ha rifiutato la proposta di gioco di %s\n",source->name,target->name);
 	}
 }
 

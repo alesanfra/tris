@@ -15,7 +15,6 @@
 //Tipi dell'header inviati dai client
 #define SETUSER 10 //invia name e porta
 #define WHO 11 //chiede gli utenti connessi
-#define GETPORT 12 //chiede la porta UDP di ascolto di un utente
 #define SETFREE 14 //comunica al server che l'utente è libero
 #define CONNECT 15 //chiede al server di connettersi con un utente
 #define DISCONNECT 17 //chiude la partita con l'avverario
@@ -50,6 +49,8 @@
 //Flag
 #define SIGNAL 70
 #define DONTSIGNAL 71
+#define KILL 72
+#define KEEP_ALIVE 73
 
 //timer
 #define ONE_MINUTE (struct timeval){60,0}
@@ -84,6 +85,7 @@ typedef struct
 {
 	char* name;
 	int socket;
+	struct sockaddr_in address;
 } client;
 
 typedef struct
@@ -96,6 +98,7 @@ typedef struct
 //Dichiarazioni delle funzioni definite in tris_lib.c
 
 void flush();
-int sendPacket(int socket, packet* buffer, const char* error_message);
-int recvPacket(int socket, packet* buffer, const char* error_message);
 void cleanSocket(int socket);
+void sendPacket(int socket, packet* buffer, const char* error_message);
+int recvPacket(int socket, packet* buffer, char flag, const char* error_message);
+int recvPacketFrom(client* peer, packet* buffer, const char* error_message);
