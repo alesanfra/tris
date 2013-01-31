@@ -1,11 +1,26 @@
 #include "tris_lib.h"
 
-/* Elimina dallo stdin una linea di caratteri */
+/* 
+ * Elimina dallo stdin una linea di caratteri 
+ */
 
 void flush()
 {
-	while(getchar()!='\n');
+	char buff;
+	
+	do{
+		buff = getchar();
+	}
+	while(buff != '\n' && buff != EOF);
 }
+
+
+
+/* 
+ * Elimina tutti i byte sul socket
+ * 	Parametri:
+ * 		int socket: socket da pulire
+ */
 
 void cleanSocket(int socket)
 {
@@ -17,7 +32,14 @@ void cleanSocket(int socket)
 }
 
 
-/* Invia un pacchetto al socket passato per argomento */
+
+/* 
+ * Invia un pacchetto al socket passato per argomento
+ * 	Parametri:
+ * 		int socket: socket dell'destinatario
+ * 		packet* buffer: pachhetto da inviare
+ * 		const char* error_message: messaggio da visualizzare in caso di err
+ */
 
 void sendPacket(int socket, packet* buffer, const char* error_message)
 {
@@ -25,7 +47,7 @@ void sendPacket(int socket, packet* buffer, const char* error_message)
 	char* send_buffer;
 	send_buffer = (char *) calloc((buffer->length)+2, sizeof(char));
 	
-	//costruzione del pacchetto da inviare
+	//Costruzione del pacchetto da inviare
 	send_buffer[0] = buffer->type;
 	send_buffer[1] = buffer->length;
 	
@@ -39,11 +61,20 @@ void sendPacket(int socket, packet* buffer, const char* error_message)
 		exit(EXIT_FAILURE);
 	}
 	
-	//dealloco il buffer di invio
+	//Dealloco il buffer di invio
 	free(send_buffer);
 }
 
-/* Riceve un pacchetto dal socket passato per argomento */
+
+
+/* 
+ * Riceve un pacchetto dal socket passato per argomento
+ * 	Parametri:
+ * 		int socket: socket dell'mittente
+ * 		packet* buffer: buffer dove salvare il pacchetto in arrivo
+ * 		char flag: specifica cosa fare in caso di errore
+ * 		const char* error_message: messaggio da visualizzare in caso di err
+ */
 
 int recvPacket(int socket, packet* buffer, char flag, const char* error_message)
 {
@@ -75,13 +106,13 @@ int recvPacket(int socket, packet* buffer, char flag, const char* error_message)
 			return ret;
 	}
 	
-	//allocazione dello spazio necessario a contenere il payload
+	//Allocazione dello spazio necessario a contenere il payload
 	if(buffer->length == 0)
 		return ret;
 	else
 		buffer->payload = (char *) calloc(buffer->length, sizeof(char));
 	
-	//ricezione del payload del pacchetto
+	//Ricezione del payload del pacchetto
 	ret = recv(socket, (void *) buffer->payload, buffer->length, 0);
 	
 	//Se il byte ricevuti sono meno del previsto stampo un messaggio
@@ -102,9 +133,20 @@ int recvPacket(int socket, packet* buffer, char flag, const char* error_message)
 			return ret;
 	}
 	
-	//restituisco il numero di byte letti sul socket
+	//Restituisco il numero di byte letti sul socket
 	return ret;
 }
+
+
+
+/* 
+ * Riceve un pacchetto UDP controllando che il mittente sia il client
+ * passato per argomento
+ * 	Parametri:
+ * 		client* peer: nome, socket e indirizzo dell'mittente
+ * 		packet* buffer: buffer dove salvare il pacchetto in arrivo
+ * 		const char* error_message: messaggio da visualizzare in caso di err
+ */
 
 int recvPacketFrom(client* peer, packet* buffer, const char* error_message)
 {
@@ -114,11 +156,11 @@ int recvPacketFrom(client* peer, packet* buffer, const char* error_message)
 	socklen_t len = sizeof(peer->address);
 	header_len = sizeof(buffer->type) + sizeof(buffer->length);
 	
-	//azzero la struttura dati
+	//Azzero la struttura dati
 	memset(buffer,0,sizeof(buffer));
 	memset(&recv_addr,0,sizeof(recv_addr));
 	
-	//ricezione dell'header del pacchetto (type e length)
+	//Ricezione dell'header del pacchetto (type e length)
 	ret = recvfrom(peer->socket, (void *) buffer, header_len, MSG_PEEK,(struct sockaddr*)&recv_addr,&len);
 	
 	//Se ricevo meno di due byte stampo un messaggio di errore
@@ -158,7 +200,7 @@ int recvPacketFrom(client* peer, packet* buffer, const char* error_message)
 		memcpy(buffer->payload,recv_buffer+2,buffer->length);
 	}
 	
-	//dealloco il buffer usato per ricevere tutto il contenuto del segmento
+	//Dealloco il buffer usato per ricevere tutto il contenuto del segmento
 	free(recv_buffer);
 	
 	//Controllo che il mittente sia l'avversario
@@ -171,3 +213,45 @@ int recvPacketFrom(client* peer, packet* buffer, const char* error_message)
 	}
 }
 
+
+
+/* 
+ * Legge una linea dal terminale, la alloca in memoria dinamica e 
+ * restitusce il puntatore
+ * 	Parametri:
+ * 		int max: numero massimo di caratteri nella stringa
+ */
+
+char* readLine(int max)
+{
+	int i=1;
+	
+	if(max < 2)
+		return NULL;
+	
+	char* line = (char *) malloc(max);
+	
+	do{
+		line[0] = getchar();
+		if(line[0] == EOF)
+		{
+			free(line);
+			return NULL;
+		}
+	} while(line[0] == ' ' || line[0] == '\n');
+	
+	for(i=1; i<max-1; i++)
+	{
+		line[i] = getchar();
+		if(line[i] == EOF || line[i] == '\n')
+			break;
+	}
+	
+	line[i] = '\0';
+	line = realloc(line,strlen(line)+1);
+	
+	if(i==max-1)
+		flush();
+	
+	return line;
+}
